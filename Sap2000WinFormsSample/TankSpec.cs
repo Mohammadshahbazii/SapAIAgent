@@ -10,6 +10,7 @@ namespace Sap2000WinFormsSample
         public Materials materials { get; set; }
         public Loads loads { get; set; }
         public double foundationElevation { get; set; }
+        public bool fixBase { get; set; } = true;
 
         public static TankSpec FromJson(string json) =>
             JsonSerializer.Deserialize<TankSpec>(json, new JsonSerializerOptions

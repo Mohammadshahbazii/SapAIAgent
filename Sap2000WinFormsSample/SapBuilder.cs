@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using SAP2000v1;
 
 namespace Sap2000WinFormsSample
@@ -36,6 +37,13 @@ namespace Sap2000WinFormsSample
             double z0 = spec.foundationElevation;
             double dz = H / (nZ - 1);
             double dTheta = 2.0 * Math.PI / nCirc;
+            double panelWidth = 2.0 * Math.PI * R / nCirc;
+
+            bool applyHydro = spec.loads != null && spec.loads.liquidHeight > 0 && spec.loads.unitWeight > 0;
+            double liquidHeight = applyHydro ? spec.loads.liquidHeight : 0.0;
+            double unitWeight = applyHydro ? spec.loads.unitWeight : 0.0;
+
+            var jointLoads = applyHydro ? new Dictionary<string, (double Fx, double Fy)>(StringComparer.OrdinalIgnoreCase) : null;
 
             // Create all ring points
             string[,] pNames = new string[nZ, nCirc];
@@ -55,6 +63,20 @@ namespace Sap2000WinFormsSample
                     ret = model.PointObj.AddCartesian(x, y, z, ref pName);
                     if (ret != 0) throw new ApplicationException("Point add failed.");
                     pNames[iz, ic] = pName;
+
+                    if (jointLoads != null && !jointLoads.ContainsKey(pName))
+                        jointLoads[pName] = (0.0, 0.0);
+                }
+            }
+
+            // Restrain base ring if requested
+            if (spec.fixBase)
+            {
+                for (int ic = 0; ic < nCirc; ic++)
+                {
+                    var restraints = new bool[] { true, true, true, true, true, true };
+                    ret = model.PointObj.SetRestraint(pNames[0, ic], ref restraints);
+                    if (ret != 0) throw new ApplicationException("Failed to set base restraint.");
                 }
             }
 
@@ -67,6 +89,43 @@ namespace Sap2000WinFormsSample
                     ret = model.FrameObj.AddByPoint(pNames[iz, ic], pNames[iz + 1, ic], ref name);
                     if (ret != 0) throw new ApplicationException("Frame add failed (vertical).");
                     created++;
+
+                    if (applyHydro)
+                    {
+                        double segmentTop = iz * dz;
+                        double segmentBottom = (iz + 1) * dz;
+
+                        double submergedHeight = Math.Max(0.0, Math.Min(segmentBottom, liquidHeight) - Math.Min(segmentTop, liquidHeight));
+                        if (submergedHeight <= 0)
+                            continue;
+
+                        double depthTop = Math.Max(0.0, liquidHeight - segmentTop);
+                        double depthBottom = Math.Max(0.0, liquidHeight - segmentBottom);
+                        double avgPressure = 0.5 * (depthTop + depthBottom) * unitWeight;
+                        double panelForce = avgPressure * panelWidth * submergedHeight;
+                        if (panelForce <= 0)
+                            continue;
+
+                        double theta = ic * dTheta;
+                        double ux = Math.Cos(theta);
+                        double uy = Math.Sin(theta);
+                        double halfForceX = 0.5 * panelForce * ux;
+                        double halfForceY = 0.5 * panelForce * uy;
+
+                        string topPoint = pNames[iz, ic];
+                        string bottomPoint = pNames[iz + 1, ic];
+
+                        if (jointLoads.ContainsKey(topPoint))
+                        {
+                            var load = jointLoads[topPoint];
+                            jointLoads[topPoint] = (load.Fx + halfForceX, load.Fy + halfForceY);
+                        }
+                        if (jointLoads.ContainsKey(bottomPoint))
+                        {
+                            var load = jointLoads[bottomPoint];
+                            jointLoads[bottomPoint] = (load.Fx + halfForceX, load.Fy + halfForceY);
+                        }
+                    }
                 }
             }
 
@@ -83,10 +142,24 @@ namespace Sap2000WinFormsSample
                 }
             }
 
-            // TODO: you can assign section properties, materials, loads here based on spec.
-            // Example (pseudo):
-            // model.PropFrame.SetPipe("WALL", matName, outerDiam, thickness);
-            // model.FrameObj.SetSection(name, "WALL");
+            if (applyHydro)
+            {
+                const string hydroPattern = "HYDROSTATIC";
+                // Try to add the load pattern; ignore if it already exists
+                int retAdd = model.LoadPatterns.Add(hydroPattern, eLoadPatternType.Other, 0, true);
+                if (retAdd != 0)
+                {
+                    // The pattern might already exist; try to continue by clearing retAdd
+                    retAdd = 0;
+                }
+
+                foreach (var kvp in jointLoads)
+                {
+                    var forces = new double[] { kvp.Value.Fx, kvp.Value.Fy, 0, 0, 0, 0 };
+                    int retLoad = model.PointObj.SetLoadForce(kvp.Key, hydroPattern, ref forces, false);
+                    if (retLoad != 0) throw new ApplicationException($"Failed to assign hydrostatic load at joint {kvp.Key}.");
+                }
+            }
 
             return created;
         }
