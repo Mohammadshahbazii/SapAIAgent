@@ -162,7 +162,23 @@ namespace Sap2000WinFormsSample
                     int retLoad = model.PointObj.SetLoadForce(kvp.Key, hydroPattern, ref forces, false);
                     if (retLoad != 0) throw new ApplicationException($"Failed to assign hydrostatic load at joint {kvp.Key}.");
                 }
+
+                // Ensure the newly created hydrostatic case is flagged to run. SAP2000 creates the
+                // case automatically when we pass addCase = true above, but the run flag is left
+                // disabled in a blank model. Without setting the flag the subsequent analysis call
+                // returns a non-zero error code.
+                int retRunFlag = model.Analyze.SetRunCaseFlag(hydroPattern, true);
+                if (retRunFlag != 0)
+                {
+                    // Fall back to enabling the default dead-load case so that at least one case
+                    // is active for analysis.
+                    model.Analyze.SetRunCaseFlag("DEAD", true);
+                }
             }
+
+            // Mark the default dead-load case to run as a final safety net. New blank models ship
+            // with the case defined but disabled, which causes Analyze.RunAnalysis to fail.
+            model.Analyze.SetRunCaseFlag("DEAD", true);
 
             return created;
         }
