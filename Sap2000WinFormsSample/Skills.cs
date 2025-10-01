@@ -383,8 +383,16 @@ namespace Sap2000WinFormsSample
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
+            // Make sure at least one reasonable case is active before running the solver.
+            model.Analyze.SetRunCaseFlag("HYDROSTATIC", true);
+            model.Analyze.SetRunCaseFlag("DEAD", true);
+
+            // Clear any stale results so the analysis can start cleanly.
+            model.Analyze.DeleteResults();
+
             int ret = model.Analyze.RunAnalysis();
-            if (ret != 0) throw new ApplicationException("RunAnalysis failed.");
+            if (ret != 0)
+                throw new ApplicationException($"RunAnalysis failed (code {ret}). Ensure that at least one load case is enabled.");
             return "Analysis completed.";
         }
     }
