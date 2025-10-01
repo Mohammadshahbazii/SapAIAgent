@@ -147,7 +147,8 @@ namespace Sap2000WinFormsSample
 
                     if (string.Equals(turn.status, "need_clarification", StringComparison.OrdinalIgnoreCase))
                     {
-                        Log(turn.message ?? "Planner needs more information.");
+                        var plannerMessage = turn.message ?? "The planner needs more information.";
+                        Log(plannerMessage);
                         if (turn.questions == null || turn.questions.Count == 0)
                         {
                             LogError("Planner requested clarification without questions. Stopping.");
@@ -156,7 +157,8 @@ namespace Sap2000WinFormsSample
 
                         foreach (var question in turn.questions)
                         {
-                            var answer = PromptDialog.Show("Clarification needed", question);
+                            Log($"Clarification requested: {question}");
+                            var answer = PromptDialog.ShowClarification("Clarification needed", plannerMessage, question);
                             if (answer == null)
                             {
                                 Log("User cancelled clarification. Aborting plan.");
