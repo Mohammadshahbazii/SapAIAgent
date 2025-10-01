@@ -1,9 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.Windows.Forms;
-using System.Text.Json;
-using System.Threading.Tasks;
 using SAP2000v1;
 
 namespace Sap2000WinFormsSample
@@ -107,6 +105,8 @@ namespace Sap2000WinFormsSample
                 return;
             }
 
+            EnsureSkills();
+
             try
             {
                 string apiKey = txtApiKey.Text.Trim();
@@ -119,52 +119,93 @@ namespace Sap2000WinFormsSample
                     return;
                 }
 
+                var initialPrompt = txtAiPrompt.Text.Trim();
+                if (string.IsNullOrWhiteSpace(initialPrompt))
+                {
+                    MessageBox.Show("Enter a description of what you want the agent to do.");
+                    return;
+                }
+
                 btnAiDesign.Enabled = false;
-                Log("Contacting AI for tank spec...");
 
-                var service = new OpenAIService(apiKey);
-                var json = await service.GetTankSpecJsonAsync(txtAiPrompt.Text.Trim());
+                var planner = new PlannerService(apiKey);
+                var toolsCatalog = PlannerService.BuildToolsCatalog(_reg);
 
-                Log("AI JSON received:");
-                Log(json);
-
-                TankSpec spec = null;
-                try
+                var conversation = new List<ChatMessage>
                 {
-                    spec = TankSpec.FromJson(json);
-                }
-                catch (Exception jex)
+                    ChatMessage.User(initialPrompt)
+                };
+
+                PlannerTurn turn = null;
+                Plan finalPlan = null;
+
+                while (true)
                 {
-                    LogError("JSON parse failed: " + jex.Message);
+                    Log("Asking planner to interpret conversation...");
+                    turn = await planner.MakePlanAsync(conversation, toolsCatalog);
+                    conversation.Add(ChatMessage.Assistant(turn.rawContent ?? "{}"));
+
+                    if (string.Equals(turn.status, "need_clarification", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log(turn.message ?? "Planner needs more information.");
+                        if (turn.questions == null || turn.questions.Count == 0)
+                        {
+                            LogError("Planner requested clarification without questions. Stopping.");
+                            return;
+                        }
+
+                        foreach (var question in turn.questions)
+                        {
+                            var answer = PromptDialog.Show("Clarification needed", question);
+                            if (answer == null)
+                            {
+                                Log("User cancelled clarification. Aborting plan.");
+                                return;
+                            }
+
+                            Log($"User provided: {answer}");
+                            conversation.Add(ChatMessage.User($"Answer to question '{question}': {answer}"));
+                        }
+
+                        continue;
+                    }
+
+                    if (string.Equals(turn.status, "plan_ready", StringComparison.OrdinalIgnoreCase))
+                    {
+                        finalPlan = turn.plan;
+                        Log(turn.message ?? "Plan ready.");
+                        break;
+                    }
+
+                    LogError(turn.message ?? "Planner returned an error.");
                     return;
                 }
 
-                if (spec == null || spec.geometry == null)
+                if (finalPlan == null)
                 {
-                    LogError("Spec incomplete.");
+                    LogError("Planner did not return a plan.");
                     return;
                 }
 
-                // Ensure model & units are initialized (if not already)
-                int ret;
-                ret = _model.InitializeNewModel(eUnits.kN_m_C);
-                CheckRet(ret, "InitializeNewModel");
-                ret = _model.File.NewBlank();
-                CheckRet(ret, "File.NewBlank");
+                Log($"Executing plan '{finalPlan.intent}' with {finalPlan.steps?.Count ?? 0} steps...");
+                if (finalPlan.steps != null)
+                {
+                    foreach (var step in finalPlan.steps)
+                    {
+                        var confirmText = step.confirm ? "(confirm)" : string.Empty;
+                        Log($" - {step.action} {confirmText}");
+                    }
+                }
 
-                // Build geometry
-                int count = SapBuilder.BuildCylindricalReservoirFrames(_model, spec);
-                Log($"Tank frames created: {count}");
+                var orchestrator = new Orchestrator(_model, _reg, Log);
+                bool Confirm(string msg) => MessageBox.Show(msg, "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
 
-                // Optional: Save immediately to temp path
-                string outPath = @"C:\Temp\AI_Tank.SDB";
-                ret = _model.File.Save(outPath);
-                CheckRet(ret, "File.Save");
-                Log("Saved: " + outPath);
+                await orchestrator.RunPlanAsync(finalPlan, Confirm);
+                Log("Plan execution completed.");
             }
             catch (Exception ex)
             {
-                LogError("AI design failed: " + ex.Message);
+                LogError("AI planning failed: " + ex.Message);
             }
             finally
             {
