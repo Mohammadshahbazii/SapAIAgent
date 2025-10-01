@@ -64,8 +64,6 @@ namespace Sap2000WinFormsSample
                     if (ret != 0) throw new ApplicationException("Point add failed.");
                     pNames[iz, ic] = pName;
 
-                    if (jointLoads != null && !jointLoads.ContainsKey(pName))
-                        jointLoads[pName] = (0.0, 0.0);
                 }
             }
 
@@ -115,15 +113,15 @@ namespace Sap2000WinFormsSample
                         string topPoint = pNames[iz, ic];
                         string bottomPoint = pNames[iz + 1, ic];
 
-                        if (jointLoads.ContainsKey(topPoint))
+                        if (jointLoads != null)
                         {
-                            var load = jointLoads[topPoint];
-                            jointLoads[topPoint] = (load.Fx + halfForceX, load.Fy + halfForceY);
-                        }
-                        if (jointLoads.ContainsKey(bottomPoint))
-                        {
-                            var load = jointLoads[bottomPoint];
-                            jointLoads[bottomPoint] = (load.Fx + halfForceX, load.Fy + halfForceY);
+                            if (!jointLoads.TryGetValue(topPoint, out var topLoad))
+                                topLoad = (0.0, 0.0);
+                            jointLoads[topPoint] = (topLoad.Fx + halfForceX, topLoad.Fy + halfForceY);
+
+                            if (!jointLoads.TryGetValue(bottomPoint, out var bottomLoad))
+                                bottomLoad = (0.0, 0.0);
+                            jointLoads[bottomPoint] = (bottomLoad.Fx + halfForceX, bottomLoad.Fy + halfForceY);
                         }
                     }
                 }
@@ -155,7 +153,12 @@ namespace Sap2000WinFormsSample
 
                 foreach (var kvp in jointLoads)
                 {
-                    var forces = new double[] { kvp.Value.Fx, kvp.Value.Fy, 0, 0, 0, 0 };
+                    double fx = kvp.Value.Fx;
+                    double fy = kvp.Value.Fy;
+                    if (Math.Abs(fx) < 1e-6 && Math.Abs(fy) < 1e-6)
+                        continue;
+
+                    var forces = new double[] { fx, fy, 0, 0, 0, 0 };
                     int retLoad = model.PointObj.SetLoadForce(kvp.Key, hydroPattern, ref forces, false);
                     if (retLoad != 0) throw new ApplicationException($"Failed to assign hydrostatic load at joint {kvp.Key}.");
                 }
