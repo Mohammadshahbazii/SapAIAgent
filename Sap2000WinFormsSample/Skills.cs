@@ -43,9 +43,16 @@ namespace Sap2000WinFormsSample
                 units = eUnits.kip_in_F;
             else
                 units = eUnits.kN_m_C;
-            int ret = model.SetPresentUnits(units);
+            int ret = model.InitializeNewModel(units);
+            if (ret != 0) throw new ApplicationException("InitializeNewModel failed.");
+
+            ret = model.File.NewBlank();
+            if (ret != 0) throw new ApplicationException("File.NewBlank failed.");
+
+            ret = model.SetPresentUnits(units);
             if (ret != 0) throw new ApplicationException("SetPresentUnits failed.");
-            return $"Units set to {units}.";
+
+            return $"Initialized new blank model with units set to {units}.";
         }
     }
 
