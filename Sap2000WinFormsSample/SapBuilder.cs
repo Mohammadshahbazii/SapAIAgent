@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using SAP2000v1;
 using Microsoft.CSharp.RuntimeBinder;
 
@@ -551,19 +552,16 @@ namespace Sap2000WinFormsSample
                 // Continue to the reflection-based search below.
             }
 
-            var args = new object[]
+            var argumentSets = new List<object[]>
             {
-                propertyName,
-                shellValue,
-                material,
-                thickness,
-                membrane,
-                bending,
-                shear,
-                thermal
+                new object[] { propertyName, shellValue, material, thickness, membrane, bending, shear, thermal },
+                new object[] { propertyName, shellValue, material, thickness },
+                new object[] { propertyName, shellValue, material, thickness, 0, string.Empty, string.Empty },
+                new object[] { propertyName, shellValue, material, thickness, membrane, bending, shear, thermal, 0.0, 0.0, 0.0, 0.0 },
+                new object[] { propertyName, shellValue, material, thickness, 0, string.Empty, string.Empty, 0.0, 0.0, 0.0, 0.0 }
             };
 
-            return InvokeComMethod(propArea, "SetShell", args);
+            return InvokeComMethod(propArea, "SetShell", argumentSets);
         }
 
         private static int ConvertShellTypeValue(object shellType)
@@ -581,7 +579,7 @@ namespace Sap2000WinFormsSample
             return ShellThinValue;
         }
 
-        private static int InvokeComMethod(object comObject, string methodName, object[] args)
+        private static int InvokeComMethod(object comObject, string methodName, IEnumerable<object[]> argumentSets)
         {
             if (comObject == null) throw new ArgumentNullException(nameof(comObject));
 
@@ -589,29 +587,60 @@ namespace Sap2000WinFormsSample
             Type comType = comObject.GetType();
             var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var candidate in EnumerateCandidateMethodNames(comType, methodName))
+            foreach (var args in argumentSets ?? Enumerable.Empty<object[]>())
             {
-                if (!tried.Add(candidate))
+                if (args == null)
+                {
                     continue;
+                }
+                foreach (var candidate in EnumerateCandidateMethodNames(comType, methodName))
+                {
+                    if (!tried.Add(candidate + "|" + args.Length.ToString(CultureInfo.InvariantCulture)))
+                        continue;
 
-                try
-                {
-                    object result = comType.InvokeMember(candidate, flags, binder: null, target: comObject, args: args);
-                    if (result == null)
-                        return 0;
-                    return Convert.ToInt32(result, CultureInfo.InvariantCulture);
-                }
-                catch (MissingMethodException)
-                {
-                    continue;
-                }
-                catch (TargetInvocationException tie) when (tie.InnerException is MissingMethodException)
-                {
-                    continue;
+                    try
+                    {
+                        object result = comType.InvokeMember(candidate, flags, binder: null, target: comObject, args: args);
+                        if (result == null)
+                            return 0;
+                        return Convert.ToInt32(result, CultureInfo.InvariantCulture);
+                    }
+                    catch (MissingMethodException)
+                    {
+                        continue;
+                    }
+                    catch (TargetInvocationException tie) when (tie.InnerException is MissingMethodException)
+                    {
+                        continue;
+                    }
+                    catch (TargetInvocationException tie) when (tie.InnerException is COMException comEx && IsDispatchParameterIssue(comEx))
+                    {
+                        continue;
+                    }
+                    catch (TargetParameterCountException)
+                    {
+                        continue;
+                    }
+                    catch (ArgumentException)
+                    {
+                        continue;
+                    }
                 }
             }
 
             throw new MissingMethodException($"Method '{methodName}' not found on type '{comType?.FullName}'.");
+        }
+
+        private static bool IsDispatchParameterIssue(COMException comException)
+        {
+            if (comException == null)
+                return false;
+
+            const int DISP_E_BADPARAMCOUNT = unchecked((int)0x8002000E);
+            const int DISP_E_TYPEMISMATCH = unchecked((int)0x80020005);
+
+            return comException.ErrorCode == DISP_E_BADPARAMCOUNT
+                || comException.ErrorCode == DISP_E_TYPEMISMATCH;
         }
 
         private static IEnumerable<string> EnumerateCandidateMethodNames(Type comType, string baseName)
