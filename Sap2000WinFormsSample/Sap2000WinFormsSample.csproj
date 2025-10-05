@@ -8,7 +8,7 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>Sap2000WinFormsSample</RootNamespace>
     <AssemblyName>Sap2000WinFormsSample</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <Deterministic>true</Deterministic>
@@ -94,9 +94,12 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Documentation\Sap2000DocumentationLibrary.cs" />
+    <Compile Include="BridgeDesignSpec.cs" />
     <Compile Include="BuildingDesignSpec.cs" />
+    <Compile Include="IndustrialStructureSpec.cs" />
     <Compile Include="SapBuilder.cs" />
     <Compile Include="Skills.cs" />
+    <Compile Include="SpecialStructureSpec.cs" />
     <Compile Include="TankSpec.cs" />
     <EmbeddedResource Include="MainForm.resx">
       <DependentUpon>MainForm.cs</DependentUpon>
