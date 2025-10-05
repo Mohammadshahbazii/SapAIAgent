@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using SAP2000v1;
+using Microsoft.CSharp.RuntimeBinder;
 
 namespace Sap2000WinFormsSample
 {
@@ -236,6 +238,8 @@ namespace Sap2000WinFormsSample
                 elevations[i + 1] = currentElevation;
             }
 
+            var pointCache = new Dictionary<string, string>(StringComparer.Ordinal);
+
             for (int level = 0; level < levels; level++)
             {
                 double z = elevations[level];
@@ -249,6 +253,7 @@ namespace Sap2000WinFormsSample
                         int ret = model.PointObj.AddCartesian(x, y, z, ref name);
                         if (ret != 0) throw new ApplicationException("Failed to create joint during building generation.");
                         jointNames[level, ix, iy] = name;
+                        pointCache[MakePointKey(x, y, z)] = name;
                     }
                 }
             }
@@ -412,18 +417,18 @@ namespace Sap2000WinFormsSample
                     double zBot = elevations[level];
                     double zTop = elevations[level + 1];
 
-                    string p1 = AddOrGetPoint(model,  coreHalf,  coreHalf, zBot);
-                    string p2 = AddOrGetPoint(model, -coreHalf,  coreHalf, zBot);
-                    string p3 = AddOrGetPoint(model, -coreHalf, -coreHalf, zTop);
-                    string p4 = AddOrGetPoint(model,  coreHalf, -coreHalf, zTop);
+                    string p1 = AddOrGetPoint(model, pointCache,  coreHalf,  coreHalf, zBot);
+                    string p2 = AddOrGetPoint(model, pointCache, -coreHalf,  coreHalf, zBot);
+                    string p3 = AddOrGetPoint(model, pointCache, -coreHalf, -coreHalf, zTop);
+                    string p4 = AddOrGetPoint(model, pointCache,  coreHalf, -coreHalf, zTop);
 
                     wallPoints[0] = p1;
                     wallPoints[1] = p2;
                     wallPoints[2] = p3;
                     wallPoints[3] = p4;
 
-                    string wallName = "";
-                    int wallRet = model.AreaObj.AddByPoint(ref wallPoints, ref wallName, shearWallSection);
+                    string wallName;
+                    int wallRet = AddAreaByPoint(model, wallPoints, shearWallSection, out wallName);
                     if (wallRet != 0) throw new ApplicationException("Failed to create shear wall panel.");
                     result.shearWallPanels++;
                 }
@@ -452,8 +457,8 @@ namespace Sap2000WinFormsSample
                             jointNames[level, ix, iy + 1]
                         };
 
-                        string areaName = "";
-                        int ret = model.AreaObj.AddByPoint(ref floorPts, ref areaName, deckProperty);
+                        string areaName;
+                        int ret = AddAreaByPoint(model, floorPts, deckProperty, out areaName);
                         if (ret != 0) throw new ApplicationException("Failed to create deck panel.");
                         result.deckPanels++;
                     }
@@ -466,16 +471,16 @@ namespace Sap2000WinFormsSample
             return result;
         }
 
-        private static string AddOrGetPoint(cSapModel model, double x, double y, double z)
+        private static string AddOrGetPoint(cSapModel model, Dictionary<string, string> cache, double x, double y, double z)
         {
-            string existing = string.Empty;
-            int ret = model.PointObj.GetClosestPoint(x, y, z, ref existing);
-            if (ret == 0 && !string.IsNullOrEmpty(existing))
-                return existing;
+            string key = MakePointKey(x, y, z);
+            if (cache != null && cache.TryGetValue(key, out var cached))
+                return cached;
 
             string created = "";
             int createRet = model.PointObj.AddCartesian(x, y, z, ref created);
             if (createRet != 0) throw new ApplicationException("Failed to create auxiliary point.");
+            cache?[key] = created;
             return created;
         }
 
@@ -487,8 +492,81 @@ namespace Sap2000WinFormsSample
             string mat = def?.material ?? defaultMaterial ?? "Concrete4000";
             double thickness = def?.thickness ?? 0.2;
 
-            int ret = model.PropArea.SetShell(propertyName, eShellType.ShellThin, mat, thickness, 0, 0, 0, 0);
+            dynamic propArea = model.PropArea;
+            object shellType = ResolveShellThin(model);
+            int ret;
+            try
+            {
+                ret = propArea.SetShell(propertyName, shellType, mat, thickness, 0, 0, 0, 0);
+            }
+            catch (RuntimeBinderException)
+            {
+                int shellTypeValue = Convert.ToInt32(shellType, CultureInfo.InvariantCulture);
+                ret = propArea.SetShell(propertyName, shellTypeValue, mat, thickness, 0, 0, 0, 0);
+            }
             if (ret != 0) throw new ApplicationException($"Failed to define shell property '{propertyName}'.");
+        }
+
+        private static object ResolveShellThin(cSapModel model)
+        {
+            var assembly = model?.GetType()?.Assembly;
+            var enumType = assembly?.GetType("SAP2000v1.eShellType");
+            if (enumType != null && Enum.IsDefined(enumType, "ShellThin"))
+                return Enum.Parse(enumType, "ShellThin");
+
+            // Fallback to integer constant used by older SAP2000 builds: ShellThin = 1.
+            return 1;
+        }
+
+        private static int AddAreaByPoint(cSapModel model, string[] pointNames, string property, out string createdName)
+        {
+            if (pointNames == null) throw new ArgumentNullException(nameof(pointNames));
+
+            dynamic areaObj = model.AreaObj;
+            createdName = string.Empty;
+            string propertyValue = property ?? string.Empty;
+
+            try
+            {
+                string name = string.Empty;
+                int ret = areaObj.AddByPoint(pointNames, ref name, propertyValue);
+                createdName = name ?? string.Empty;
+                return ret;
+            }
+            catch (RuntimeBinderException)
+            {
+                try
+                {
+                    string[] names = Array.Empty<string>();
+                    int ret = areaObj.AddByPoint(pointNames, ref names, propertyValue);
+                    createdName = (names != null && names.Length > 0) ? names[0] : string.Empty;
+                    return ret;
+                }
+                catch (RuntimeBinderException)
+                {
+                    try
+                    {
+                        string[] names = Array.Empty<string>();
+                        string propCopy = propertyValue;
+                        int ret = areaObj.AddByPoint(pointNames, ref names, ref propCopy);
+                        createdName = (names != null && names.Length > 0) ? names[0] : string.Empty;
+                        return ret;
+                    }
+                    catch (RuntimeBinderException)
+                    {
+                        string name = string.Empty;
+                        string propCopy = propertyValue;
+                        int ret = areaObj.AddByPoint(pointNames, ref name, ref propCopy);
+                        createdName = name ?? string.Empty;
+                        return ret;
+                    }
+                }
+            }
+        }
+
+        private static string MakePointKey(double x, double y, double z)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "{0:F6}|{1:F6}|{2:F6}", Math.Round(x, 6), Math.Round(y, 6), Math.Round(z, 6));
         }
 
         private static eUnits ResolveUnits(Units units)
