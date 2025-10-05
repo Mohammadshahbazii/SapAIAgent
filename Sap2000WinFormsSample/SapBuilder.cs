@@ -552,13 +552,17 @@ namespace Sap2000WinFormsSample
                 // Continue to the reflection-based search below.
             }
 
+            object Optional(object value) => value ?? Type.Missing;
+
             var argumentSets = new List<object[]>
             {
                 new object[] { propertyName, shellValue, material, thickness, membrane, bending, shear, thermal },
                 new object[] { propertyName, shellValue, material, thickness },
                 new object[] { propertyName, shellValue, material, thickness, 0, string.Empty, string.Empty },
                 new object[] { propertyName, shellValue, material, thickness, membrane, bending, shear, thermal, 0.0, 0.0, 0.0, 0.0 },
-                new object[] { propertyName, shellValue, material, thickness, 0, string.Empty, string.Empty, 0.0, 0.0, 0.0, 0.0 }
+                new object[] { propertyName, shellValue, material, thickness, 0, string.Empty, string.Empty, 0.0, 0.0, 0.0, 0.0 },
+                new object[] { propertyName, shellValue, material, thickness, Optional(membrane), Optional(bending), Optional(shear), Optional(thermal), Type.Missing, Type.Missing, Type.Missing, Type.Missing },
+                new object[] { propertyName, shellValue, material, thickness, Optional(membrane), Optional(bending), Optional(shear), Optional(thermal), Optional(0.0), Optional(0.0), Optional(0.0), Optional(0.0) }
             };
 
             return InvokeComMethod(propArea, "SetShell", argumentSets);
@@ -583,7 +587,7 @@ namespace Sap2000WinFormsSample
         {
             if (comObject == null) throw new ArgumentNullException(nameof(comObject));
 
-            const BindingFlags flags = BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public;
+            const BindingFlags flags = BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase | BindingFlags.OptionalParamBinding;
             Type comType = comObject.GetType();
             var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
