@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using SAP2000v1;
 
@@ -585,7 +586,8 @@ namespace Sap2000WinFormsSample
                     {
                         dyn.LoadCases.ResponseSpectrum.SetCase(rsCase);
                         dyn.LoadCases.ResponseSpectrum.SetModalCase(rsCase, modalForRs);
-                        dyn.LoadCases.ResponseSpectrum.SetFunction(rsCase, function, 1.0, (int)eCoorDir.X, 0.0);
+                        int dirX = SapApiReflection.GetEnumInt(model, "eCoorDir", "X", 1);
+                        dyn.LoadCases.ResponseSpectrum.SetFunction(rsCase, function, 1.0, dirX, 0.0);
                         model.Analyze.SetRunCaseFlag(rsCase, true);
                         responses.Add($"Response spectrum case '{rsCase}' linked to modal '{modalForRs}' using '{function}'.");
                     }
@@ -606,7 +608,8 @@ namespace Sap2000WinFormsSample
                     try
                     {
                         dyn.LoadCases.TimeHistoryDirect.SetCase(thCase);
-                        dyn.LoadCases.TimeHistoryDirect.SetMotionFunction(thCase, function, (int)eCoorDir.X, 1.0, 0.0);
+                        int dirX = SapApiReflection.GetEnumInt(model, "eCoorDir", "X", 1);
+                        dyn.LoadCases.TimeHistoryDirect.SetMotionFunction(thCase, function, dirX, 1.0, 0.0);
                         model.Analyze.SetRunCaseFlag(thCase, true);
                         responses.Add($"Time history case '{thCase}' uses function '{function}'.");
                     }
@@ -626,7 +629,7 @@ namespace Sap2000WinFormsSample
                     string pattern = GetString(pushArgs, "pattern", "PUSH");
                     try
                     {
-                        model.LoadPatterns.Add(pattern, eLoadPatternType.Other, 0.0, true);
+                        SapApiReflection.TryAddLoadPattern(model, pattern, "Other", 0.0, true);
                         dyn.LoadCases.StaticNonlinear.SetCase(pushCase);
                         dyn.LoadCases.StaticNonlinear.SetLoadCase(pushCase, pattern);
                         model.Analyze.SetRunCaseFlag(pushCase, true);
@@ -659,20 +662,12 @@ namespace Sap2000WinFormsSample
 
         private static void EnsureBasePatterns(cSapModel model)
         {
-            var patterns = new[]
-            {
-                ("DEAD", eLoadPatternType.Dead, 1.0),
-                ("LIVE", eLoadPatternType.Live, 0.0),
-                ("EQX", eLoadPatternType.ResponseSpectrum, 0.0),
-                ("EQY", eLoadPatternType.ResponseSpectrum, 0.0),
-                ("WINDX", eLoadPatternType.Wind, 0.0),
-                ("WINDY", eLoadPatternType.Wind, 0.0)
-            };
-
-            foreach (var (name, type, sw) in patterns)
-            {
-                try { model.LoadPatterns.Add(name, type, sw, true); } catch { }
-            }
+            SapApiReflection.TryAddLoadPattern(model, "DEAD", "Dead", 1.0, true);
+            SapApiReflection.TryAddLoadPattern(model, "LIVE", "Live", 0.0, true);
+            SapApiReflection.TryAddLoadPattern(model, "EQX", "ResponseSpectrum", 0.0, true, "Quake", "Earthquake");
+            SapApiReflection.TryAddLoadPattern(model, "EQY", "ResponseSpectrum", 0.0, true, "Quake", "Earthquake");
+            SapApiReflection.TryAddLoadPattern(model, "WINDX", "Wind", 0.0, true);
+            SapApiReflection.TryAddLoadPattern(model, "WINDY", "Wind", 0.0, true);
         }
 
         private static bool TryGetToggle(Dictionary<string, object> args, string key, out Dictionary<string, object> toggle)
@@ -713,24 +708,8 @@ namespace Sap2000WinFormsSample
 
             foreach (var frame in frameNames)
             {
-                try
-                {
-                    string[] hingeNames = { "PMM" };
-                    eHingeType[] hingeTypes = { eHingeType.PMM }; // Axial + biaxial bending
-                    double[] relDistances = { 0.0 };
-                    eHingeLocation[] locations = { eHingeLocation.EndI };
-                    bool[] autoGenerate = { true };
-                    string[] existingNames = { string.Empty };
-                    model.FrameObj.SetHingeAssign(frame, 1, ref hingeNames, ref hingeTypes, ref locations, ref relDistances, ref autoGenerate, ref existingNames);
-
-                    eHingeLocation[] locationsJ = { eHingeLocation.EndJ };
-                    double[] relDistancesJ = { 0.0 };
-                    model.FrameObj.SetHingeAssign(frame, 1, ref hingeNames, ref hingeTypes, ref locationsJ, ref relDistancesJ, ref autoGenerate, ref existingNames);
-                }
-                catch
-                {
-                    // Ignore frames that reject hinge assignment (e.g., cables or tendons)
-                }
+                SapApiReflection.AssignPlasticHinge(model, frame, "EndI");
+                SapApiReflection.AssignPlasticHinge(model, frame, "EndJ");
             }
         }
 
@@ -800,6 +779,157 @@ namespace Sap2000WinFormsSample
 
     }
 
+    internal static class SapApiReflection
+    {
+        public static Type GetSapType(cSapModel model, string typeName)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(typeName))
+                return null;
+
+            var assembly = model.GetType().Assembly;
+            return assembly.GetType($"SAP2000v1.{typeName}") ?? Type.GetType($"SAP2000v1.{typeName}, SAP2000v1");
+        }
+
+        public static int GetEnumInt(cSapModel model, string enumName, string valueName, int defaultValue)
+        {
+            var value = GetEnumValue(model, enumName, valueName);
+            if (value == null)
+                return defaultValue;
+
+            try
+            {
+                return Convert.ToInt32(value);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        public static object GetEnumValue(cSapModel model, string enumName, string valueName)
+        {
+            var enumType = GetSapType(model, enumName);
+            return ResolveEnumValue(enumType, valueName);
+        }
+
+        public static void TryAddLoadPattern(cSapModel model, string name, string preferredType, double selfWeightMultiplier, bool replaceExisting, params string[] fallbackTypes)
+        {
+            if (model == null)
+                return;
+
+            try
+            {
+                var enumType = GetSapType(model, "eLoadPatternType");
+                var typeValue = ResolveEnumValue(enumType, preferredType, fallbackTypes);
+                if (typeValue == null)
+                    return;
+
+                var loadPatterns = model.LoadPatterns;
+                var method = loadPatterns.GetType().GetMethods().FirstOrDefault(m => m.Name == "Add" && m.GetParameters().Length == 4);
+                method?.Invoke(loadPatterns, new object[] { name, typeValue, selfWeightMultiplier, replaceExisting });
+            }
+            catch
+            {
+                // Ignore pattern creation failures; they may already exist or the type may not be supported.
+            }
+        }
+
+        public static void AssignPlasticHinge(cSapModel model, string frameName, string locationName)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(frameName))
+                return;
+
+            try
+            {
+                var frameObj = model.FrameObj;
+                if (frameObj == null)
+                    return;
+
+                var method = frameObj.GetType().GetMethods().FirstOrDefault(m => m.Name == "SetHingeAssign" && m.GetParameters().Length >= 8);
+                if (method == null)
+                    return;
+
+                var hingeTypeValue = ResolveEnumValue(GetSapType(model, "eHingeType"), "PMM");
+                var hingeLocationValue = ResolveEnumValue(GetSapType(model, "eHingeLocation"), locationName);
+                if (hingeTypeValue == null || hingeLocationValue == null)
+                    return;
+
+                var hingeTypes = Array.CreateInstance(hingeTypeValue.GetType(), 1);
+                hingeTypes.SetValue(hingeTypeValue, 0);
+
+                var locations = Array.CreateInstance(hingeLocationValue.GetType(), 1);
+                locations.SetValue(hingeLocationValue, 0);
+
+                string[] hingeNames = { "PMM" };
+                double[] relDistances = { 0.0 };
+                bool[] autoGenerate = { true };
+                string[] existingNames = { string.Empty };
+
+                var parameters = method.GetParameters();
+                var args = new object[parameters.Length];
+                args[0] = frameName;
+                args[1] = 1;
+                args[2] = hingeNames;
+                args[3] = hingeTypes;
+                args[4] = locations;
+                args[5] = relDistances;
+                args[6] = autoGenerate;
+                args[7] = existingNames;
+
+                for (int i = 8; i < parameters.Length; i++)
+                {
+                    args[i] = parameters[i].ParameterType.IsValueType ? Activator.CreateInstance(parameters[i].ParameterType) : null;
+                }
+
+                method.Invoke(frameObj, args);
+            }
+            catch
+            {
+                // Ignore frames that reject hinge assignment (e.g., cables or tendons)
+            }
+        }
+
+        private static object ResolveEnumValue(Type enumType, string preferred, params string[] fallbacks)
+        {
+            if (enumType == null || !enumType.IsEnum)
+                return null;
+
+            foreach (var name in EnumerateCandidates(preferred, fallbacks))
+            {
+                var match = Enum.GetNames(enumType).FirstOrDefault(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    try
+                    {
+                        return Enum.Parse(enumType, match);
+                    }
+                    catch
+                    {
+                        // Ignore parse issues and continue to other candidates.
+                    }
+                }
+            }
+
+            var values = Enum.GetValues(enumType);
+            return values.Length > 0 ? values.GetValue(0) : null;
+        }
+
+        private static IEnumerable<string> EnumerateCandidates(string preferred, params string[] fallbacks)
+        {
+            if (!string.IsNullOrWhiteSpace(preferred))
+                yield return preferred;
+
+            if (fallbacks == null)
+                yield break;
+
+            foreach (var candidate in fallbacks)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate))
+                    yield return candidate;
+            }
+        }
+    }
+
     public class SaveModelSkill : ISkill
     {
         public string Name => "SaveModel";
@@ -828,7 +958,7 @@ namespace Sap2000WinFormsSample
             model.Analyze.SetRunCaseFlag("DEAD", true);
 
             // Clear any stale results so the analysis can start cleanly.
-            model.Analyze.DeleteResults();
+            model.Analyze.DeleteResults("", true);
 
             int ret = model.Analyze.RunAnalysis();
             if (ret != 0)
