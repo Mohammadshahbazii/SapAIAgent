@@ -36,13 +36,68 @@ namespace Sap2000WinFormsSample
     public class Sap2000DocumentationLibrary
     {
         private readonly List<DocumentationEntry> _entries;
+        private readonly Dictionary<string, DocumentationEntry> _methodIndex;
 
         public Sap2000DocumentationLibrary(string baseDirectory = null)
         {
             _entries = LoadEntries(baseDirectory) ?? new List<DocumentationEntry>();
+            _methodIndex = BuildMethodIndex(_entries);
         }
 
         public bool HasEntries => _entries.Count > 0;
+
+        public bool TryGetEntry(string methodName, out DocumentationEntry entry)
+        {
+            if (string.IsNullOrWhiteSpace(methodName) || _methodIndex == null)
+            {
+                entry = null;
+                return false;
+            }
+
+            return _methodIndex.TryGetValue(methodName, out entry);
+        }
+
+        public string BuildMethodSummary(IEnumerable<string> methodNames, int maxEntries = 5)
+        {
+            if (_methodIndex == null || methodNames == null)
+                return string.Empty;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var sb = new StringBuilder();
+            int count = 0;
+
+            foreach (var method in methodNames)
+            {
+                if (count >= maxEntries)
+                    break;
+
+                if (string.IsNullOrWhiteSpace(method) || !seen.Add(method))
+                    continue;
+
+                if (!_methodIndex.TryGetValue(method, out var entry))
+                    continue;
+
+                sb.Append("- ");
+                sb.Append(entry.method);
+
+                if (!string.IsNullOrWhiteSpace(entry.summary))
+                    sb.Append(": ").Append(entry.summary);
+
+                if (entry.parameters != null && entry.parameters.Count > 0)
+                    sb.Append(" Parameters: ").Append(string.Join("; ", entry.parameters));
+
+                if (!string.IsNullOrWhiteSpace(entry.usage))
+                    sb.Append(" Usage: ").Append(entry.usage);
+
+                if (!string.IsNullOrWhiteSpace(entry.returns))
+                    sb.Append(" Returns: ").Append(entry.returns);
+
+                sb.AppendLine();
+                count++;
+            }
+
+            return count > 0 ? sb.ToString().TrimEnd() : string.Empty;
+        }
 
         public string BuildContextSummary(string userPrompt, int maxEntries = 5)
         {
@@ -109,6 +164,25 @@ namespace Sap2000WinFormsSample
             builder.AppendLine("Always follow documented call order and respect required units and load cases.");
 
             return builder.ToString();
+        }
+
+        private static Dictionary<string, DocumentationEntry> BuildMethodIndex(IEnumerable<DocumentationEntry> entries)
+        {
+            var index = new Dictionary<string, DocumentationEntry>(StringComparer.OrdinalIgnoreCase);
+
+            if (entries == null)
+                return index;
+
+            foreach (var entry in entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry?.method))
+                    continue;
+
+                if (!index.ContainsKey(entry.method))
+                    index[entry.method] = entry;
+            }
+
+            return index;
         }
 
         private static int CategoryPriority(string category)

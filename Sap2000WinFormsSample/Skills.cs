@@ -14,6 +14,7 @@ namespace Sap2000WinFormsSample
         string Name { get; } // action name as used in plan
         string Description { get; } // brief description for the LLM
         string ParamsSchema { get; } // JSON-like example for guidance
+        IEnumerable<string> DocumentationReferences { get; }
         string Execute(cSapModel model, Dictionary<string, object> args);
     }
 
@@ -30,9 +31,17 @@ namespace Sap2000WinFormsSample
 
     public class InitializeBlankModelSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.InitializeNewModel",
+            "cSapModel.File.NewBlank",
+            "cSapModel.SetPresentUnits"
+        };
+
         public string Name => "InitializeBlankModel";
         public string Description => "Create a new blank model in a specified unit system.";
         public string ParamsSchema => @"{ ""units"": ""kN_m_C|N_mm_C|kip_ft_F|kip_in_F"" }";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -61,9 +70,15 @@ namespace Sap2000WinFormsSample
 
     public class SetUnitsSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.SetPresentUnits"
+        };
+
         public string Name => "SetUnits";
         public string Description => "Set present units for subsequent API calls.";
         public string ParamsSchema => @"{ ""units"": ""kN_m_C|N_mm_C|kip_ft_F|kip_in_F"" }";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -86,6 +101,17 @@ namespace Sap2000WinFormsSample
 
     public class BuildCylindricalReservoirSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.SetPresentUnits",
+            "cSapModel.PointObj.AddCartesian",
+            "cSapModel.PointObj.SetRestraint",
+            "cSapModel.FrameObj.AddByPoint",
+            "cSapModel.LoadPatterns.Add",
+            "cSapModel.PointObj.SetLoadForce",
+            "cSapModel.Analyze.SetRunCaseFlag"
+        };
+
         public string Name => "BuildCylindricalReservoir";
         public string Description => "Create cylindrical reservoir frames (rings + verticals).";
         public string ParamsSchema => @"{
@@ -98,6 +124,7 @@ namespace Sap2000WinFormsSample
   ""unitWeight"": 9.81,
   ""fixBase"": true
 }";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -367,6 +394,14 @@ namespace Sap2000WinFormsSample
 
     public class BuildMultiStoryBuildingSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.SetPresentUnits",
+            "cSapModel.PointObj.AddCartesian",
+            "cSapModel.PropFrame.SetRectangle",
+            "cSapModel.FrameObj.AddByPoint"
+        };
+
         public string Name => "BuildMultiStoryBuilding";
         public string Description => "Generate multi-story steel/concrete building frames, shear walls, braces, and composite slabs based on a parametric layout.";
         public string ParamsSchema => @"
@@ -381,6 +416,8 @@ namespace Sap2000WinFormsSample
            ""lateralSystem"": { ""systemType"": ""Dual"", ""addBracesInBothDirections"": true, ""addShearWallCore"": true },
            ""deck"": { ""type"": ""Composite"", ""thickness"": 0.13 }
        }";
+
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         // The rest of the class remains unchanged.  
 
@@ -470,9 +507,17 @@ namespace Sap2000WinFormsSample
 
     public class ConfigureDesignCodesSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.DesignSteel.SetCode",
+            "cSapModel.DesignConcrete.SetCode",
+            "cSapModel.DesignCompositeBeam.SetCode"
+        };
+
         public string Name => "ConfigureDesignCodes";
         public string Description => "Set steel, concrete, and composite design codes so automated checks follow the desired standards.";
         public string ParamsSchema => @"{ ""steelCode"": ""AISC360-16"", ""concreteCode"": ""ACI318-19"", ""compositeBeamCode"": ""Eurocode4"" }";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -545,16 +590,32 @@ namespace Sap2000WinFormsSample
 
     public class SetupAdvancedAnalysesSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.LoadCases.ModalEigen.SetCase",
+            "cSapModel.LoadCases.ModalEigen.SetNumberModes",
+            "cSapModel.LoadCases.ResponseSpectrum.SetCase",
+            "cSapModel.LoadCases.ResponseSpectrum.SetModalCase",
+            "cSapModel.LoadCases.ResponseSpectrum.SetFunction",
+            "cSapModel.LoadCases.TimeHistoryDirect.SetCase",
+            "cSapModel.LoadCases.TimeHistoryDirect.SetMotionFunction",
+            "cSapModel.LoadCases.StaticNonlinear.SetCase",
+            "cSapModel.LoadCases.StaticNonlinear.SetLoadCase",
+            "cSapModel.Analyze.SetRunCaseFlag"
+        };
+
         public string Name => "SetupAdvancedAnalyses";
         public string Description => "Create modal, response spectrum, time history, and pushover cases plus optional plastic hinge defaults.";
-        public string ParamsSchema => @"{  
-       ""modal"": { ""enabled"": true, ""caseName"": ""MODAL"", ""modes"": 12 },  
-       ""responseSpectrum"": { ""enabled"": true, ""caseName"": ""RS-X"", ""function"": ""UBC97"" },  
-       ""timeHistory"": { ""enabled"": false, ""caseName"": ""TH-X"", ""function"": ""ElCentro"" },  
+        public string ParamsSchema => @"{
+       ""modal"": { ""enabled"": true, ""caseName"": ""MODAL"", ""modes"": 12 },
+       ""responseSpectrum"": { ""enabled"": true, ""caseName"": ""RS-X"", ""function"": ""UBC97"" },
+        ""timeHistory"": { ""enabled"": false, ""caseName"": ""TH-X"", ""function"": ""ElCentro"" },
        ""pushover"": { ""enabled"": true, ""caseName"": ""PUSH-X"" },  
        ""assignPlasticHinges"": true  
    }";
 
+
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
@@ -942,9 +1003,15 @@ namespace Sap2000WinFormsSample
 
     public class SaveModelSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.File.Save"
+        };
+
         public string Name => "SaveModel";
         public string Description => "Save the current model to path (.SDB).";
         public string ParamsSchema => @"{ ""path"": ""C:\\Temp\\MyModel.SDB"" }";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -957,9 +1024,17 @@ namespace Sap2000WinFormsSample
 
     public class RunAnalysisSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.Analyze.SetRunCaseFlag",
+            "cSapModel.Analyze.DeleteResults",
+            "cSapModel.Analyze.RunAnalysis"
+        };
+
         public string Name => "RunAnalysis";
         public string Description => "Run analysis.";
         public string ParamsSchema => @"{ }";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -979,9 +1054,16 @@ namespace Sap2000WinFormsSample
 
     public class GetModelInfoSkill : ISkill
     {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.GetModelFilename",
+            "cSapModel.PointObj.GetNameList"
+        };
+
         public string Name => "GetModelInfo";
         public string Description => "Read model filename and joint count.";
         public string ParamsSchema => @"{ ""includePath"": true }";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {

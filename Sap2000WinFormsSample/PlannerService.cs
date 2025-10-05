@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -90,7 +91,7 @@ Rules:
             return turn;
         }
 
-        public static string BuildToolsCatalog(SkillRegistry reg)
+        public static string BuildToolsCatalog(SkillRegistry reg, Sap2000DocumentationLibrary documentation = null)
         {
             // Describe tools for the LLM
             var sb = new StringBuilder();
@@ -98,6 +99,23 @@ Rules:
             {
                 sb.AppendLine($"- {s.Name}: {s.Description}");
                 sb.AppendLine($"  params: {s.ParamsSchema}");
+                if (documentation != null)
+                {
+                    var docSummary = documentation.BuildMethodSummary(s.DocumentationReferences, 4);
+                    if (!string.IsNullOrWhiteSpace(docSummary))
+                    {
+                        sb.AppendLine("  docs:");
+                        using (var reader = new StringReader(docSummary))
+                        {
+                            string line;
+                            while ((line = reader.ReadLine()) != null)
+                            {
+                                sb.Append("    ");
+                                sb.AppendLine(line);
+                            }
+                        }
+                    }
+                }
             }
             return sb.ToString();
         }
