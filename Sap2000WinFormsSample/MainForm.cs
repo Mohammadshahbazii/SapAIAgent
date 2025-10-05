@@ -88,7 +88,7 @@ namespace Sap2000WinFormsSample
         //    if (string.IsNullOrWhiteSpace(apiKey)) { MessageBox.Show("Enter API key."); return; }
 
         //    var planner = new PlannerService(apiKey);
-        //    var toolsCatalog = PlannerService.BuildToolsCatalog(_reg);
+        //    var toolsCatalog = PlannerService.BuildToolsCatalog(_reg, _documentation);
 
         //    btnAiDesign.Enabled = false;
         //    try
@@ -146,7 +146,7 @@ namespace Sap2000WinFormsSample
                 btnAiDesign.Enabled = false;
 
                 var planner = new PlannerService(apiKey);
-                var toolsCatalog = PlannerService.BuildToolsCatalog(_reg);
+                var toolsCatalog = PlannerService.BuildToolsCatalog(_reg, _documentation);
 
                 var conversation = new List<ChatMessage>
                 {
@@ -219,6 +219,8 @@ namespace Sap2000WinFormsSample
                         Log($" - {step.action} {confirmText}");
                     }
                 }
+
+                LogPlanDocumentation(finalPlan);
 
                 var orchestrator = new Orchestrator(_model, _reg, Log);
                 bool Confirm(string msg) => MessageBox.Show(msg, "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
@@ -415,6 +417,38 @@ namespace Sap2000WinFormsSample
 
             conversation.Add(ChatMessage.Assistant(context));
             Log("Added CSI OAPI documentation context for planner.");
+        }
+
+        private void LogPlanDocumentation(Plan plan)
+        {
+            if (plan?.steps == null || plan.steps.Count == 0)
+                return;
+
+            if (_documentation == null || !_documentation.HasEntries || _reg == null)
+                return;
+
+            foreach (var step in plan.steps)
+            {
+                if (step == null || string.IsNullOrWhiteSpace(step.action))
+                    continue;
+
+                if (!_reg.TryGet(step.action, out var skill) || skill == null)
+                    continue;
+
+                var summary = _documentation.BuildMethodSummary(skill.DocumentationReferences, 5);
+                if (string.IsNullOrWhiteSpace(summary))
+                    continue;
+
+                Log($"Documentation hints for {step.action}:");
+                using (var reader = new StringReader(summary))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        Log("    " + line);
+                    }
+                }
+            }
         }
     }
 }
