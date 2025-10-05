@@ -1400,7 +1400,6 @@ namespace Sap2000WinFormsSample
         {
             if (propArea == null) throw new ArgumentNullException(nameof(propArea));
 
-            int shellValue = ConvertShellTypeValue(shellType);
             double membrane = 0.0;
             double bending = 0.0;
             double shear = 0.0;
@@ -1412,38 +1411,42 @@ namespace Sap2000WinFormsSample
             // dynamic keeps the late-bound invocation logic simple while still
             // allowing us to fall back to the more exhaustive reflection-based
             // search below when needed.
-            try
+            foreach (var shellArgument in EnumerateShellTypeArguments(shellType))
             {
-                dynamic area = propArea;
-                return area.SetShell(propertyName, shellValue, material, thickness, membrane, bending, shear, thermal);
-            }
-            catch (RuntimeBinderException)
-            {
-                // Continue to the other strategies.
-            }
+                try
+                {
+                    dynamic area = propArea;
+                    return area.SetShell(propertyName, shellArgument, material, thickness, membrane, bending, shear, thermal);
+                }
+                catch (RuntimeBinderException)
+                {
+                    // Continue to the other strategies.
+                }
 
-            try
-            {
-                dynamic area = propArea;
-                return area.SetShell_1(propertyName, shellValue, material, thickness, membrane, bending, shear, thermal);
-            }
-            catch (RuntimeBinderException)
-            {
-                // Continue to the reflection-based search below.
+                try
+                {
+                    dynamic area = propArea;
+                    return area.SetShell_1(propertyName, shellArgument, material, thickness, membrane, bending, shear, thermal);
+                }
+                catch (RuntimeBinderException)
+                {
+                    // Continue to the reflection-based search below.
+                }
             }
 
             object Optional(object value) => value ?? Type.Missing;
 
-            var argumentSets = new List<object[]>
+            var argumentSets = new List<object[]>();
+            foreach (var shellArgument in EnumerateShellTypeArguments(shellType))
             {
-                new object[] { propertyName, shellValue, material, thickness, membrane, bending, shear, thermal },
-                new object[] { propertyName, shellValue, material, thickness },
-                new object[] { propertyName, shellValue, material, thickness, 0, string.Empty, string.Empty },
-                new object[] { propertyName, shellValue, material, thickness, membrane, bending, shear, thermal, 0.0, 0.0, 0.0, 0.0 },
-                new object[] { propertyName, shellValue, material, thickness, 0, string.Empty, string.Empty, 0.0, 0.0, 0.0, 0.0 },
-                new object[] { propertyName, shellValue, material, thickness, Optional(membrane), Optional(bending), Optional(shear), Optional(thermal), Type.Missing, Type.Missing, Type.Missing, Type.Missing },
-                new object[] { propertyName, shellValue, material, thickness, Optional(membrane), Optional(bending), Optional(shear), Optional(thermal), Optional(0.0), Optional(0.0), Optional(0.0), Optional(0.0) }
-            };
+                argumentSets.Add(new object[] { propertyName, shellArgument, material, thickness, membrane, bending, shear, thermal });
+                argumentSets.Add(new object[] { propertyName, shellArgument, material, thickness });
+                argumentSets.Add(new object[] { propertyName, shellArgument, material, thickness, 0, string.Empty, string.Empty });
+                argumentSets.Add(new object[] { propertyName, shellArgument, material, thickness, membrane, bending, shear, thermal, 0.0, 0.0, 0.0, 0.0 });
+                argumentSets.Add(new object[] { propertyName, shellArgument, material, thickness, 0, string.Empty, string.Empty, 0.0, 0.0, 0.0, 0.0 });
+                argumentSets.Add(new object[] { propertyName, shellArgument, material, thickness, Optional(membrane), Optional(bending), Optional(shear), Optional(thermal), Type.Missing, Type.Missing, Type.Missing, Type.Missing });
+                argumentSets.Add(new object[] { propertyName, shellArgument, material, thickness, Optional(membrane), Optional(bending), Optional(shear), Optional(thermal), Optional(0.0), Optional(0.0), Optional(0.0), Optional(0.0) });
+            }
 
             return InvokeComMethod(propArea, "SetShell", argumentSets);
         }
@@ -1461,6 +1464,32 @@ namespace Sap2000WinFormsSample
                 return convertible.ToInt32(CultureInfo.InvariantCulture);
 
             return ShellThinValue;
+        }
+
+        private static IEnumerable<object> EnumerateShellTypeArguments(object shellType)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            if (shellType != null)
+            {
+                string key = shellType is IConvertible convertible
+                    ? convertible.ToString(CultureInfo.InvariantCulture)
+                    : shellType.ToString();
+                if (seen.Add(key))
+                    yield return shellType;
+            }
+
+            int shellValue = ConvertShellTypeValue(shellType);
+            string shellValueKey = shellValue.ToString(CultureInfo.InvariantCulture);
+            if (seen.Add(shellValueKey))
+                yield return shellValue;
+
+            if (seen.Add(ShellThinValue.ToString(CultureInfo.InvariantCulture)))
+                yield return ShellThinValue;
+
+            const string shellThinName = "ShellThin";
+            if (seen.Add(shellThinName))
+                yield return shellThinName;
         }
 
         private static int InvokeComMethod(object comObject, string methodName, IEnumerable<object[]> argumentSets)
@@ -1646,13 +1675,44 @@ namespace Sap2000WinFormsSample
 
             if (!defined.Contains(name))
             {
-                int ret = model.PropFrame.SetRectangle(name, material, depth, width);
-                if (ret != 0)
-                    throw new ApplicationException($"Failed to define frame section '{name}'.");
+                bool success = false;
+                var attempted = new List<string>();
+                foreach (var materialOption in EnumerateMaterialCandidates(material, fallbackMaterial))
+                {
+                    attempted.Add(materialOption);
+                    int ret = model.PropFrame.SetRectangle(name, materialOption, depth, width);
+                    if (ret == 0)
+                    {
+                        success = true;
+                        break;
+                    }
+                }
+
+                if (!success)
+                    throw new ApplicationException($"Failed to define frame section '{name}' after trying materials: {string.Join(", ", attempted)}.");
+
                 defined.Add(name);
             }
 
             return name;
+        }
+
+        private static IEnumerable<string> EnumerateMaterialCandidates(string requested, string fallback)
+        {
+            var candidates = new List<string>
+            {
+                requested,
+                fallback,
+                "Steel",
+                "Concrete4000"
+            };
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var candidate in candidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    yield return candidate;
+            }
         }
 
         private static eUnits ResolveUnits(Units units)
