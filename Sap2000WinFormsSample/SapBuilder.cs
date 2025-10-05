@@ -303,6 +303,7 @@ namespace Sap2000WinFormsSample
                     return;
 
                 string mat = def?.material ?? defaultMaterial ?? materials.steelMaterial;
+                EnsureMaterials(model, mat, defaultMaterial, materials.steelMaterial, materials.concreteMaterial);
                 double depth = def?.depth ?? 0.4;
                 double width = def?.width ?? 0.3;
 
@@ -557,6 +558,18 @@ namespace Sap2000WinFormsSample
             var pointCache = new Dictionary<string, string>(StringComparer.Ordinal);
             var fixedPoints = new HashSet<string>(StringComparer.Ordinal);
             var definedSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            EnsureMaterials(model,
+                spec.frames?.columns?.material,
+                spec.frames?.rafters?.material,
+                spec.frames?.braces?.material,
+                spec.frames?.purlins?.material,
+                spec.frames?.craneGirders?.material,
+                "Steel",
+                "A36",
+                "A572Gr50",
+                "A992Fy50",
+                "Concrete4000");
 
             string columnSection = EnsureFrameSection(model, definedSections, spec.frames?.columns, "Column450x350", 0.45, 0.35, "A992Fy50");
             string rafterSection = EnsureFrameSection(model, definedSections, spec.frames?.rafters, "Rafter400x300", 0.40, 0.30, "A992Fy50");
@@ -1188,6 +1201,14 @@ namespace Sap2000WinFormsSample
             var definedSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new SpecialStructureBuildResult();
 
+            EnsureMaterials(model,
+                "A572Gr50",
+                "CableSteel",
+                spec.membrane?.membraneSection,
+                "MembranePTFE",
+                "Steel",
+                "Concrete4000");
+
             string braceSection = EnsureFrameSection(model, definedSections, new IndustrialFrameSection
             {
                 name = spec.tower?.braceSection ?? "TowerBrace200x150",
@@ -1372,6 +1393,7 @@ namespace Sap2000WinFormsSample
                 propertyName = def?.name ?? "ShellProperty";
 
             string mat = def?.material ?? defaultMaterial ?? "Concrete4000";
+            EnsureMaterials(model, mat, defaultMaterial, "Concrete4000", "Steel");
             double thickness = def?.thickness ?? 0.2;
 
             object propArea = model?.PropArea;
@@ -1432,6 +1454,49 @@ namespace Sap2000WinFormsSample
                 {
                     // Continue to the reflection-based search below.
                 }
+
+                try
+                {
+                    dynamic area = propArea;
+                    return area.SetShell(propertyName, shellArgument, material, thickness);
+                }
+                catch (RuntimeBinderException)
+                {
+                }
+
+                try
+                {
+                    dynamic area = propArea;
+                    return area.SetShell_1(propertyName, shellArgument, material, thickness);
+                }
+                catch (RuntimeBinderException)
+                {
+                }
+
+                if (propArea is cPropArea typedArea && TryConvertToShellEnum(shellArgument, out eShellType typedShell))
+                {
+                    try
+                    {
+                        return typedArea.SetShell(propertyName, typedShell, material, thickness, membrane, bending, shear, thermal);
+                    }
+                    catch (COMException)
+                    {
+                    }
+                    catch (MissingMethodException)
+                    {
+                    }
+
+                    try
+                    {
+                        return typedArea.SetShell(propertyName, typedShell, material, thickness);
+                    }
+                    catch (COMException)
+                    {
+                    }
+                    catch (MissingMethodException)
+                    {
+                    }
+                }
             }
 
             object Optional(object value) => value ?? Type.Missing;
@@ -1464,6 +1529,27 @@ namespace Sap2000WinFormsSample
                 return convertible.ToInt32(CultureInfo.InvariantCulture);
 
             return ShellThinValue;
+        }
+
+        private static bool TryConvertToShellEnum(object candidate, out eShellType value)
+        {
+            if (candidate is eShellType typed)
+            {
+                value = typed;
+                return true;
+            }
+
+            try
+            {
+                int converted = ConvertShellTypeValue(candidate);
+                value = (eShellType)converted;
+                return true;
+            }
+            catch
+            {
+                value = (eShellType)ShellThinValue;
+                return false;
+            }
         }
 
         private static IEnumerable<object> EnumerateShellTypeArguments(object shellType)
@@ -1679,6 +1765,7 @@ namespace Sap2000WinFormsSample
                 var attempted = new List<string>();
                 foreach (var materialOption in EnumerateMaterialCandidates(material, fallbackMaterial))
                 {
+                    EnsureMaterials(model, materialOption, fallbackMaterial, "Steel", "Concrete4000");
                     attempted.Add(materialOption);
                     int ret = model.PropFrame.SetRectangle(name, materialOption, depth, width);
                     if (ret == 0)
@@ -1713,6 +1800,286 @@ namespace Sap2000WinFormsSample
                 if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
                     yield return candidate;
             }
+        }
+
+        private static readonly IReadOnlyDictionary<string, MaterialDefinition> MaterialLibrary
+            = new Dictionary<string, MaterialDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Steel"] = new MaterialDefinition
+                {
+                    Type = eMatType.Steel,
+                    YoungsModulus = 200_000_000,
+                    PoissonRatio = 0.3,
+                    ThermalExpansion = 1.2e-5,
+                    Density = 7850
+                },
+                ["A36"] = new MaterialDefinition
+                {
+                    Type = eMatType.Steel,
+                    YoungsModulus = 200_000_000,
+                    PoissonRatio = 0.3,
+                    ThermalExpansion = 1.2e-5,
+                    Density = 7850
+                },
+                ["A572Gr50"] = new MaterialDefinition
+                {
+                    Type = eMatType.Steel,
+                    YoungsModulus = 200_000_000,
+                    PoissonRatio = 0.3,
+                    ThermalExpansion = 1.2e-5,
+                    Density = 7850
+                },
+                ["A992Fy50"] = new MaterialDefinition
+                {
+                    Type = eMatType.Steel,
+                    YoungsModulus = 200_000_000,
+                    PoissonRatio = 0.3,
+                    ThermalExpansion = 1.2e-5,
+                    Density = 7850
+                },
+                ["CableSteel"] = new MaterialDefinition
+                {
+                    Type = eMatType.Steel,
+                    YoungsModulus = 190_000_000,
+                    PoissonRatio = 0.3,
+                    ThermalExpansion = 1.2e-5,
+                    Density = 7850
+                },
+                ["Concrete4000"] = new MaterialDefinition
+                {
+                    Type = eMatType.Concrete,
+                    YoungsModulus = 25_000_000,
+                    PoissonRatio = 0.2,
+                    ThermalExpansion = 9.9e-6,
+                    Density = 2400
+                },
+                ["Concrete"] = new MaterialDefinition
+                {
+                    Type = eMatType.Concrete,
+                    YoungsModulus = 25_000_000,
+                    PoissonRatio = 0.2,
+                    ThermalExpansion = 9.9e-6,
+                    Density = 2400
+                },
+                ["MembranePTFE"] = new MaterialDefinition
+                {
+                    Type = eMatType.Other,
+                    YoungsModulus = 1_900_000,
+                    PoissonRatio = 0.3,
+                    ThermalExpansion = 1.7e-5,
+                    Density = 1500
+                }
+            };
+
+        private sealed class MaterialDefinition
+        {
+            public eMatType Type { get; set; }
+            public double YoungsModulus { get; set; }
+            public double PoissonRatio { get; set; }
+            public double ThermalExpansion { get; set; }
+            public double Density { get; set; }
+        }
+
+        private static void EnsureMaterials(cSapModel model, params string[] materialNames)
+        {
+            if (model == null || materialNames == null || materialNames.Length == 0)
+                return;
+
+            var uniqueNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in materialNames)
+            {
+                if (!string.IsNullOrWhiteSpace(name))
+                    uniqueNames.Add(name.Trim());
+            }
+
+            if (uniqueNames.Count == 0)
+                return;
+
+            var existing = GetExistingMaterialNames(model);
+            var missing = uniqueNames.Where(name => !existing.Contains(name)).ToList();
+            if (missing.Count == 0)
+                return;
+
+            eUnits originalUnits = GetPresentUnits(model);
+            bool unitsChanged = originalUnits != eUnits.kN_m_C && model.SetPresentUnits(eUnits.kN_m_C) == 0;
+
+            foreach (var name in missing)
+            {
+                if (TryDefineMaterial(model, name))
+                    existing.Add(name);
+            }
+
+            if (unitsChanged)
+                model.SetPresentUnits(originalUnits);
+        }
+
+        private static HashSet<string> GetExistingMaterialNames(cSapModel model)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (model == null)
+                return result;
+
+            object propMaterial = model.PropMaterial;
+            if (propMaterial == null)
+                return result;
+
+            try
+            {
+                dynamic mat = propMaterial;
+                int count = 0;
+                string[] names = Array.Empty<string>();
+                int ret = mat.GetNameList(ref count, ref names);
+                if (ret == 0 && names != null)
+                {
+                    foreach (var name in names)
+                    {
+                        if (!string.IsNullOrWhiteSpace(name))
+                            result.Add(name);
+                    }
+                }
+                return result;
+            }
+            catch (RuntimeBinderException)
+            {
+                try
+                {
+                    object[] args = new object[] { 0, Array.Empty<string>() };
+                    int ret = InvokeComMethod(propMaterial, "GetNameList", new[] { args });
+                    if (ret == 0 && args.Length >= 2 && args[1] is string[] names)
+                    {
+                        foreach (var name in names)
+                        {
+                            if (!string.IsNullOrWhiteSpace(name))
+                                result.Add(name);
+                        }
+                    }
+                }
+                catch (MissingMethodException)
+                {
+                    // Ignore; some builds may not expose the name list. We simply assume
+                    // no materials are defined and allow EnsureMaterials to attempt creation.
+                }
+            }
+
+            return result;
+        }
+
+        private static bool TryDefineMaterial(cSapModel model, string materialName)
+        {
+            if (model == null || string.IsNullOrWhiteSpace(materialName))
+                return false;
+
+            var propMaterial = model.PropMaterial;
+            if (propMaterial == null)
+                return false;
+
+            MaterialDefinition definition = ResolveMaterialDefinition(materialName);
+            if (definition == null)
+                return false;
+
+            double density = definition.Density;
+            const double gravity = 9.80665;
+            const double kgPerTonne = 1000.0;
+
+            double weightPerVolume = density * gravity / 1000.0; // kN/m^3
+            double massPerVolume = density / kgPerTonne; // tonne/m^3
+            double shearModulus = definition.YoungsModulus / (2.0 * (1.0 + definition.PoissonRatio));
+
+            int materialRet = TryInvokeMaterialMethod(propMaterial, "SetMaterial", new[]
+            {
+                new object[] { materialName, definition.Type },
+                new object[] { materialName, (int)definition.Type },
+                new object[] { materialName, definition.Type, string.Empty, string.Empty },
+                new object[] { materialName, (int)definition.Type, string.Empty, string.Empty }
+            });
+
+            if (materialRet != 0)
+                return false;
+
+            TryInvokeMaterialMethod(propMaterial, "SetWeightAndMass", new[]
+            {
+                new object[] { materialName, weightPerVolume, massPerVolume },
+                new object[] { materialName, weightPerVolume, massPerVolume, 0.0 },
+                new object[] { materialName, weightPerVolume, massPerVolume, 0.0, 0.0 }
+            });
+
+            TryInvokeMaterialMethod(propMaterial, "SetMPIsotropic", new[]
+            {
+                new object[] { materialName, definition.YoungsModulus, definition.PoissonRatio, definition.ThermalExpansion, shearModulus },
+                new object[] { materialName, definition.YoungsModulus, definition.PoissonRatio, definition.ThermalExpansion },
+                new object[] { materialName, definition.YoungsModulus, definition.PoissonRatio, definition.ThermalExpansion, shearModulus, 0.0 }
+            });
+
+            return true;
+        }
+
+        private static MaterialDefinition ResolveMaterialDefinition(string materialName)
+        {
+            if (string.IsNullOrWhiteSpace(materialName))
+                return null;
+
+            if (MaterialLibrary.TryGetValue(materialName, out var definition))
+                return definition;
+
+            if (materialName.IndexOf("concrete", StringComparison.OrdinalIgnoreCase) >= 0)
+                return MaterialLibrary["Concrete4000"];
+
+            if (materialName.IndexOf("ptfe", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                materialName.IndexOf("membrane", StringComparison.OrdinalIgnoreCase) >= 0)
+                return MaterialLibrary["MembranePTFE"];
+
+            return MaterialLibrary["Steel"];
+        }
+
+        private static int TryInvokeMaterialMethod(object materialObject, string methodName, IEnumerable<object[]> argumentSets)
+        {
+            if (materialObject == null)
+                return -1;
+
+            try
+            {
+                return InvokeComMethod(materialObject, methodName, argumentSets);
+            }
+            catch (MissingMethodException)
+            {
+                return -1;
+            }
+        }
+
+        private static eUnits GetPresentUnits(cSapModel model)
+        {
+            if (model == null)
+                return eUnits.kN_m_C;
+
+            try
+            {
+                dynamic sap = model;
+                eUnits units = eUnits.kN_m_C;
+                int ret = sap.GetPresentUnits(ref units);
+                if (ret == 0)
+                    return units;
+            }
+            catch (RuntimeBinderException)
+            {
+                try
+                {
+                    object[] args = new object[] { eUnits.kN_m_C };
+                    int ret = InvokeComMethod(model, "GetPresentUnits", new[] { args });
+                    if (ret == 0 && args.Length > 0)
+                    {
+                        if (args[0] is eUnits enumUnits)
+                            return enumUnits;
+                        if (args[0] is int intUnits)
+                            return (eUnits)intUnits;
+                    }
+                }
+                catch (MissingMethodException)
+                {
+                    // Ignore and return default.
+                }
+            }
+
+            return eUnits.kN_m_C;
         }
 
         private static eUnits ResolveUnits(Units units)
