@@ -555,16 +555,59 @@ namespace Sap2000WinFormsSample
 
             const BindingFlags flags = BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public;
             Type comType = comObject.GetType();
+            var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            try
+            foreach (var candidate in EnumerateCandidateMethodNames(comType, methodName))
             {
-                object result = comType.InvokeMember(methodName, flags, binder: null, target: comObject, args: args);
-                return Convert.ToInt32(result, CultureInfo.InvariantCulture);
+                if (!tried.Add(candidate))
+                    continue;
+
+                try
+                {
+                    object result = comType.InvokeMember(candidate, flags, binder: null, target: comObject, args: args);
+                    if (result == null)
+                        return 0;
+                    return Convert.ToInt32(result, CultureInfo.InvariantCulture);
+                }
+                catch (MissingMethodException)
+                {
+                    continue;
+                }
+                catch (TargetInvocationException tie) when (tie.InnerException is MissingMethodException)
+                {
+                    continue;
+                }
             }
-            catch (MissingMethodException)
+
+            throw new MissingMethodException($"Method '{methodName}' not found on type '{comType?.FullName}'.");
+        }
+
+        private static IEnumerable<string> EnumerateCandidateMethodNames(Type comType, string baseName)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrEmpty(baseName))
             {
-                object result = comType.InvokeMember(methodName + "_1", flags, binder: null, target: comObject, args: args);
-                return Convert.ToInt32(result, CultureInfo.InvariantCulture);
+                if (seen.Add(baseName))
+                    yield return baseName;
+
+                string suffixed = baseName + "_1";
+                if (seen.Add(suffixed))
+                    yield return suffixed;
+            }
+
+            if (comType == null)
+                yield break;
+
+            var additional = comType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .Select(m => m.Name)
+                .Where(name => !string.IsNullOrEmpty(baseName) && name.StartsWith(baseName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var name in additional)
+            {
+                if (seen.Add(name))
+                    yield return name;
             }
         }
 
