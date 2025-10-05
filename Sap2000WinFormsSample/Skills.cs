@@ -360,6 +360,446 @@ namespace Sap2000WinFormsSample
         }
     }
 
+    public class BuildMultiStoryBuildingSkill : ISkill
+    {
+        public string Name => "BuildMultiStoryBuilding";
+        public string Description => "Generate multi-story steel/concrete building frames, shear walls, braces, and composite slabs based on a parametric layout.";
+        public string ParamsSchema => @"{
+  "name": "OfficeTower",
+  "units": { "length": "m", "force": "kN" },
+  "layout": { "baysX": 4, "baysY": 3, "baySpacingX": 6.0, "baySpacingY": 7.5 },
+  "stories": [
+    { "name": "L1", "height": 4.2, "beamSection": "B350x450", "columnSection": "C400x400" },
+    { "name": "L2", "height": 3.8 }
+  ],
+  "lateralSystem": { "systemType": "Dual", "addBracesInBothDirections": true, "addShearWallCore": true },
+  "deck": { "type": "Composite", "thickness": 0.13 }
+}";
+
+        public string Execute(cSapModel model, Dictionary<string, object> args)
+        {
+            var spec = ExtractSpec(args) ?? new BuildingDesignSpec();
+            var result = SapBuilder.BuildMultiStoryBuilding(model, spec);
+            return $"Building generated. joints={result.jointCount}, columns={result.frameCount}, beams={result.beamCount}, braces={result.braceCount}, shearWalls={result.shearWallPanels}, deckPanels={result.deckPanels}.";
+        }
+
+        private static BuildingDesignSpec ExtractSpec(Dictionary<string, object> args)
+        {
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            if (args == null)
+                return null;
+
+            if (args.TryGetValue("design", out var designObj))
+            {
+                var fromDesign = DeserializeSpec(designObj, options);
+                if (fromDesign != null)
+                    return fromDesign;
+            }
+
+            if (args.TryGetValue("building", out var buildingObj))
+            {
+                var fromBuilding = DeserializeSpec(buildingObj, options);
+                if (fromBuilding != null)
+                    return fromBuilding;
+            }
+
+            if (args.TryGetValue("spec", out var specObj))
+            {
+                var fromSpec = DeserializeSpec(specObj, options);
+                if (fromSpec != null)
+                    return fromSpec;
+            }
+
+            var json = JsonSerializer.Serialize(args, options);
+            return DeserializeSpec(json, options);
+        }
+
+        private static BuildingDesignSpec DeserializeSpec(object input, JsonSerializerOptions options)
+        {
+            if (input == null)
+                return null;
+
+            if (input is BuildingDesignSpec ready)
+                return ready;
+
+            if (input is string s)
+            {
+                try { return BuildingDesignSpec.FromJson(s); } catch { return null; }
+            }
+
+            if (input is JsonElement element)
+            {
+                try { return element.Deserialize<BuildingDesignSpec>(options); } catch { return null; }
+            }
+
+            if (input is Dictionary<string, object> dict)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(dict, options);
+                    return JsonSerializer.Deserialize<BuildingDesignSpec>(json, options);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            try
+            {
+                var json = JsonSerializer.Serialize(input, options);
+                return JsonSerializer.Deserialize<BuildingDesignSpec>(json, options);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public class ConfigureDesignCodesSkill : ISkill
+    {
+        public string Name => "ConfigureDesignCodes";
+        public string Description => "Set steel, concrete, and composite design codes so automated checks follow the desired standards.";
+        public string ParamsSchema => @"{ "steelCode": "AISC360-16", "concreteCode": "ACI318-19", "compositeBeamCode": "Eurocode4" }";
+
+        public string Execute(cSapModel model, Dictionary<string, object> args)
+        {
+            string steel = GetString(args, "steelCode", "AISC360-16");
+            string concrete = GetString(args, "concreteCode", "ACI318-19");
+            string composite = GetString(args, "compositeBeamCode", "AISC360-16");
+
+            var messages = new List<string>();
+            dynamic dyn = model;
+
+            if (!string.IsNullOrWhiteSpace(steel))
+            {
+                try
+                {
+                    dyn.DesignSteel.SetCode(steel);
+                    messages.Add($"Steel={steel}");
+                }
+                catch (Exception ex)
+                {
+                    messages.Add($"Steel={steel} (failed: {ex.Message})");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(concrete))
+            {
+                try
+                {
+                    dyn.DesignConcrete.SetCode(concrete);
+                    messages.Add($"Concrete={concrete}");
+                }
+                catch (Exception ex)
+                {
+                    messages.Add($"Concrete={concrete} (failed: {ex.Message})");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(composite))
+            {
+                try
+                {
+                    dyn.DesignCompositeBeam.SetCode(composite);
+                    messages.Add($"CompositeBeam={composite}");
+                }
+                catch (Exception ex)
+                {
+                    messages.Add($"CompositeBeam={composite} (failed: {ex.Message})");
+                }
+            }
+
+            return messages.Count > 0 ? string.Join("; ", messages) : "No design codes updated.";
+        }
+
+        private static string GetString(Dictionary<string, object> args, string key, string defaultValue)
+        {
+            if (args == null || !args.TryGetValue(key, out var value) || value == null)
+                return defaultValue;
+
+            if (value is string s && !string.IsNullOrWhiteSpace(s))
+                return s;
+
+            if (value is JsonElement element)
+            {
+                if (element.ValueKind == JsonValueKind.String)
+                    return element.GetString();
+            }
+
+            return Convert.ToString(value, CultureInfo.InvariantCulture) ?? defaultValue;
+        }
+    }
+
+    public class SetupAdvancedAnalysesSkill : ISkill
+    {
+        public string Name => "SetupAdvancedAnalyses";
+        public string Description => "Create modal, response spectrum, time history, and pushover cases plus optional plastic hinge defaults.";
+        public string ParamsSchema => @"{
+  "modal": { "enabled": true, "caseName": "MODAL", "modes": 12 },
+  "responseSpectrum": { "enabled": true, "caseName": "RS-X", "function": "UBC97" },
+  "timeHistory": { "enabled": false, "caseName": "TH-X", "function": "ElCentro" },
+  "pushover": { "enabled": true, "caseName": "PUSH-X" },
+  "assignPlasticHinges": true
+}";
+
+        public string Execute(cSapModel model, Dictionary<string, object> args)
+        {
+            var responses = new List<string>();
+            dynamic dyn = model;
+
+            EnsureBasePatterns(model);
+
+            if (TryGetToggle(args, "modal", out var modalArgs))
+            {
+                bool enabled = GetBool(modalArgs, "enabled", true);
+                string caseName = GetString(modalArgs, "caseName", "MODAL");
+                int modes = GetInt(modalArgs, "modes", 12);
+                if (enabled)
+                {
+                    try
+                    {
+                        dyn.LoadCases.ModalEigen.SetCase(caseName);
+                        dyn.LoadCases.ModalEigen.SetNumberModes(caseName, modes);
+                        model.Analyze.SetRunCaseFlag(caseName, true);
+                        responses.Add($"Modal case '{caseName}' with {modes} modes ready.");
+                    }
+                    catch (Exception ex)
+                    {
+                        responses.Add($"Modal setup failed ({ex.Message}).");
+                    }
+                }
+            }
+
+            if (TryGetToggle(args, "responseSpectrum", out var rsArgs))
+            {
+                bool enabled = GetBool(rsArgs, "enabled", true);
+                if (enabled)
+                {
+                    string rsCase = GetString(rsArgs, "caseName", "RS-X");
+                    string modalForRs = GetString(rsArgs, "modalCase", "MODAL");
+                    string function = GetString(rsArgs, "function", "UBC97");
+                    try
+                    {
+                        dyn.LoadCases.ResponseSpectrum.SetCase(rsCase);
+                        dyn.LoadCases.ResponseSpectrum.SetModalCase(rsCase, modalForRs);
+                        dyn.LoadCases.ResponseSpectrum.SetFunction(rsCase, function, 1.0, (int)eCoorDir.X, 0.0);
+                        model.Analyze.SetRunCaseFlag(rsCase, true);
+                        responses.Add($"Response spectrum case '{rsCase}' linked to modal '{modalForRs}' using '{function}'.");
+                    }
+                    catch (Exception ex)
+                    {
+                        responses.Add($"Response spectrum setup failed ({ex.Message}).");
+                    }
+                }
+            }
+
+            if (TryGetToggle(args, "timeHistory", out var thArgs))
+            {
+                bool enabled = GetBool(thArgs, "enabled", false);
+                if (enabled)
+                {
+                    string thCase = GetString(thArgs, "caseName", "TH-X");
+                    string function = GetString(thArgs, "function", "ElCentro");
+                    try
+                    {
+                        dyn.LoadCases.TimeHistoryDirect.SetCase(thCase);
+                        dyn.LoadCases.TimeHistoryDirect.SetMotionFunction(thCase, function, (int)eCoorDir.X, 1.0, 0.0);
+                        model.Analyze.SetRunCaseFlag(thCase, true);
+                        responses.Add($"Time history case '{thCase}' uses function '{function}'.");
+                    }
+                    catch (Exception ex)
+                    {
+                        responses.Add($"Time history setup failed ({ex.Message}).");
+                    }
+                }
+            }
+
+            if (TryGetToggle(args, "pushover", out var pushArgs))
+            {
+                bool enabled = GetBool(pushArgs, "enabled", false);
+                if (enabled)
+                {
+                    string pushCase = GetString(pushArgs, "caseName", "PUSH-X");
+                    string pattern = GetString(pushArgs, "pattern", "PUSH");
+                    try
+                    {
+                        model.LoadPatterns.Add(pattern, eLoadPatternType.Other, 0.0, true);
+                        dyn.LoadCases.StaticNonlinear.SetCase(pushCase);
+                        dyn.LoadCases.StaticNonlinear.SetLoadCase(pushCase, pattern);
+                        model.Analyze.SetRunCaseFlag(pushCase, true);
+                        responses.Add($"Pushover case '{pushCase}' with pattern '{pattern}' created.");
+                    }
+                    catch (Exception ex)
+                    {
+                        responses.Add($"Pushover setup failed ({ex.Message}).");
+                    }
+                }
+            }
+
+            bool assignHinges = GetBool(args, "assignPlasticHinges", false);
+            if (assignHinges)
+            {
+                try
+                {
+                    AssignDefaultPlasticHinges(model);
+                    responses.Add("Plastic hinge defaults assigned to frame objects.");
+                }
+                catch (Exception ex)
+                {
+                    responses.Add($"Plastic hinge assignment failed ({ex.Message}).");
+                }
+            }
+
+            return responses.Count > 0 ? string.Join(" 
+", responses) : "No advanced analysis changes applied.";
+        }
+
+        private static void EnsureBasePatterns(cSapModel model)
+        {
+            var patterns = new[]
+            {
+                ("DEAD", eLoadPatternType.Dead, 1.0),
+                ("LIVE", eLoadPatternType.Live, 0.0),
+                ("EQX", eLoadPatternType.ResponseSpectrum, 0.0),
+                ("EQY", eLoadPatternType.ResponseSpectrum, 0.0),
+                ("WINDX", eLoadPatternType.Wind, 0.0),
+                ("WINDY", eLoadPatternType.Wind, 0.0)
+            };
+
+            foreach (var (name, type, sw) in patterns)
+            {
+                try { model.LoadPatterns.Add(name, type, sw, true); } catch { }
+            }
+        }
+
+        private static bool TryGetToggle(Dictionary<string, object> args, string key, out Dictionary<string, object> toggle)
+        {
+            toggle = null;
+            if (args == null || !args.TryGetValue(key, out var value) || value == null)
+                return false;
+
+            if (value is Dictionary<string, object> dict)
+            {
+                toggle = dict;
+                return true;
+            }
+
+            if (value is JsonElement element && element.ValueKind == JsonValueKind.Object)
+            {
+                try
+                {
+                    toggle = JsonSerializer.Deserialize<Dictionary<string, object>>(element.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    return toggle != null;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private static void AssignDefaultPlasticHinges(cSapModel model)
+        {
+            int number = 0;
+            string[] frameNames = null;
+            int ret = model.FrameObj.GetNameList(ref number, ref frameNames);
+            if (ret != 0 || frameNames == null || frameNames.Length == 0)
+                return;
+
+            foreach (var frame in frameNames)
+            {
+                try
+                {
+                    string[] hingeNames = { "PMM" };
+                    eHingeType[] hingeTypes = { eHingeType.PMM }; // Axial + biaxial bending
+                    double[] relDistances = { 0.0 };
+                    eHingeLocation[] locations = { eHingeLocation.EndI };
+                    bool[] autoGenerate = { true };
+                    string[] existingNames = { string.Empty };
+                    model.FrameObj.SetHingeAssign(frame, 1, ref hingeNames, ref hingeTypes, ref locations, ref relDistances, ref autoGenerate, ref existingNames);
+
+                    eHingeLocation[] locationsJ = { eHingeLocation.EndJ };
+                    double[] relDistancesJ = { 0.0 };
+                    model.FrameObj.SetHingeAssign(frame, 1, ref hingeNames, ref hingeTypes, ref locationsJ, ref relDistancesJ, ref autoGenerate, ref existingNames);
+                }
+                catch
+                {
+                    // Ignore frames that reject hinge assignment (e.g., cables or tendons)
+                }
+            }
+        }
+
+        private static string GetString(Dictionary<string, object> args, string key, string defaultValue)
+        {
+            if (args == null || !args.TryGetValue(key, out var value) || value == null)
+                return defaultValue;
+
+            if (value is string s && !string.IsNullOrWhiteSpace(s))
+                return s;
+
+            if (value is JsonElement element)
+            {
+                if (element.ValueKind == JsonValueKind.String)
+                    return element.GetString();
+            }
+
+            return Convert.ToString(value, CultureInfo.InvariantCulture) ?? defaultValue;
+        }
+
+        private static bool GetBool(Dictionary<string, object> args, string key, bool defaultValue)
+        {
+            if (args == null || !args.TryGetValue(key, out var value) || value == null)
+                return defaultValue;
+
+            if (value is bool b)
+                return b;
+
+            if (value is JsonElement element)
+            {
+                if (element.ValueKind == JsonValueKind.True) return true;
+                if (element.ValueKind == JsonValueKind.False) return false;
+                if (element.ValueKind == JsonValueKind.String)
+                {
+                    if (bool.TryParse(element.GetString(), out var parsedBool))
+                        return parsedBool;
+                }
+                if (element.ValueKind == JsonValueKind.Number && element.TryGetDouble(out var dbl))
+                    return Math.Abs(dbl) > double.Epsilon;
+            }
+
+            if (value is string s)
+            {
+                if (bool.TryParse(s, out var parsed)) return parsed;
+                if (double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var dbl)) return Math.Abs(dbl) > double.Epsilon;
+            }
+
+            if (value is int i) return i != 0;
+            if (value is double d) return Math.Abs(d) > double.Epsilon;
+
+            return defaultValue;
+        }
+
+        private static int GetInt(Dictionary<string, object> args, string key, int defaultValue)
+        {
+            if (args == null || !args.TryGetValue(key, out var value) || value == null)
+                return defaultValue;
+
+            if (value is int i) return i;
+            if (value is JsonElement element && element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var parsed))
+                return parsed;
+            if (value is string s && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedStr))
+                return parsedStr;
+            if (value is double d) return (int)Math.Round(d);
+            return defaultValue;
+        }
+
+    }
+
     public class SaveModelSkill : ISkill
     {
         public string Name => "SaveModel";

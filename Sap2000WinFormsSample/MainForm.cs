@@ -12,6 +12,7 @@ namespace Sap2000WinFormsSample
         private cOAPI _oapi;      // SAP2000 main object
         private cSapModel _model; // Active model
         private SkillRegistry _reg;
+        private Sap2000DocumentationLibrary _documentation;
         private void EnsureSkills()
         {
             if (_reg != null) return;
@@ -19,6 +20,9 @@ namespace Sap2000WinFormsSample
             _reg.Register(new InitializeBlankModelSkill());
             _reg.Register(new SetUnitsSkill());
             _reg.Register(new BuildCylindricalReservoirSkill());
+            _reg.Register(new BuildMultiStoryBuildingSkill());
+            _reg.Register(new ConfigureDesignCodesSkill());
+            _reg.Register(new SetupAdvancedAnalysesSkill());
             _reg.Register(new SaveModelSkill());
             _reg.Register(new RunAnalysisSkill());
             _reg.Register(new GetModelInfoSkill());
@@ -28,6 +32,19 @@ namespace Sap2000WinFormsSample
         {
             InitializeComponent();
             InitUi();
+
+            try
+            {
+                _documentation = new Sap2000DocumentationLibrary();
+                if (_documentation.HasEntries)
+                    Log("Loaded SAP2000 CSI OAPI documentation index.");
+                else
+                    Log("Documentation index not found. AI planning will use skill catalog only.");
+            }
+            catch (Exception ex)
+            {
+                LogError("Failed to load documentation index: " + ex.Message);
+            }
         }
 
         private void InitUi()
@@ -136,6 +153,8 @@ namespace Sap2000WinFormsSample
                     ChatMessage.User(initialPrompt)
                 };
 
+                AppendDocumentationContext(conversation, initialPrompt);
+
                 PlannerTurn turn = null;
                 Plan finalPlan = null;
 
@@ -166,7 +185,9 @@ namespace Sap2000WinFormsSample
                             }
 
                             Log($"User provided: {answer}");
-                            conversation.Add(ChatMessage.User($"Answer to question '{question}': {answer}"));
+                            var clarification = $"Answer to question '{question}': {answer}";
+                            conversation.Add(ChatMessage.User(clarification));
+                            AppendDocumentationContext(conversation, clarification);
                         }
 
                         continue;
@@ -381,6 +402,19 @@ namespace Sap2000WinFormsSample
         private void LogError(string msg)
         {
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] ERROR: {msg}{Environment.NewLine}");
+        }
+
+        private void AppendDocumentationContext(List<ChatMessage> conversation, string userContent)
+        {
+            if (_documentation == null || conversation == null || string.IsNullOrWhiteSpace(userContent))
+                return;
+
+            var context = _documentation.BuildContextSummary(userContent);
+            if (string.IsNullOrWhiteSpace(context))
+                return;
+
+            conversation.Add(ChatMessage.Assistant(context));
+            Log("Added CSI OAPI documentation context for planner.");
         }
     }
 }
