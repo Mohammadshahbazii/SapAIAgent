@@ -617,7 +617,7 @@ namespace Sap2000WinFormsSample
                     {
                         continue;
                     }
-                    catch (TargetInvocationException tie) when (tie.InnerException is COMException comEx && IsDispatchParameterIssue(comEx))
+                    catch (TargetInvocationException tie) when (tie.InnerException is COMException comEx && IsDispatchRetryWorthy(comEx))
                     {
                         continue;
                     }
@@ -635,16 +635,18 @@ namespace Sap2000WinFormsSample
             throw new MissingMethodException($"Method '{methodName}' not found on type '{comType?.FullName}'.");
         }
 
-        private static bool IsDispatchParameterIssue(COMException comException)
+        private static bool IsDispatchRetryWorthy(COMException comException)
         {
             if (comException == null)
                 return false;
 
+            const int DISP_E_MEMBERNOTFOUND = unchecked((int)0x80020003);
             const int DISP_E_BADPARAMCOUNT = unchecked((int)0x8002000E);
             const int DISP_E_TYPEMISMATCH = unchecked((int)0x80020005);
 
             return comException.ErrorCode == DISP_E_BADPARAMCOUNT
-                || comException.ErrorCode == DISP_E_TYPEMISMATCH;
+                || comException.ErrorCode == DISP_E_TYPEMISMATCH
+                || comException.ErrorCode == DISP_E_MEMBERNOTFOUND;
         }
 
         private static IEnumerable<string> EnumerateCandidateMethodNames(Type comType, string baseName)
