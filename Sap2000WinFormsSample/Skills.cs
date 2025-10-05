@@ -115,13 +115,13 @@ namespace Sap2000WinFormsSample
         public string Name => "BuildCylindricalReservoir";
         public string Description => "Create cylindrical reservoir frames (rings + verticals).";
         public string ParamsSchema => @"{
+  ""type"": ""VerticalCylindrical|Horizontal|Spherical"",
   ""units"": ""kN_m_C"",
-  ""diameter"": 10.0, ""height"": 8.0,
+  ""geometry"": { ""diameter"": 10.0, ""height"": 8.0, ""length"": 14.0 },
   ""shellThickness"": 0.2,
   ""numWallSegments"": 24, ""numHeightSegments"": 8,
   ""foundationElevation"": 0.0,
-  ""liquidHeight"": 6.0,
-  ""unitWeight"": 9.81,
+  ""loads"": { ""liquidHeight"": 6.0, ""unitWeight"": 9.81 },
   ""fixBase"": true
 }";
         public IEnumerable<string> DocumentationReferences => _docRefs;
@@ -137,6 +137,8 @@ namespace Sap2000WinFormsSample
             double liquidHeight = GetD(args, "liquidHeight", 0);
             double unitWeight = GetD(args, "unitWeight", 0);
             bool fixBase = GetBool(args, "fixBase", true);
+            double vesselLength = GetD(args, "length", 0);
+            double roofRise = GetD(args, "roofRise", 0);
 
             if (args.TryGetValue("geometry", out var geometryObj) && geometryObj != null)
             {
@@ -147,6 +149,8 @@ namespace Sap2000WinFormsSample
                     shellThickness = GetD(geometryDict, "shellThickness", shellThickness);
                     nCirc = (int)GetD(geometryDict, "numWallSegments", nCirc);
                     nZ = (int)GetD(geometryDict, "numHeightSegments", nZ);
+                    vesselLength = GetD(geometryDict, "length", vesselLength);
+                    roofRise = GetD(geometryDict, "roofRise", roofRise);
                 }
                 else if (geometryObj is JsonElement geometryElement && geometryElement.ValueKind == JsonValueKind.Object)
                 {
@@ -155,6 +159,8 @@ namespace Sap2000WinFormsSample
                     if (geometryElement.TryGetProperty("shellThickness", out var s)) shellThickness = GetD(s, shellThickness);
                     if (geometryElement.TryGetProperty("numWallSegments", out var n)) nCirc = (int)GetD(n, nCirc);
                     if (geometryElement.TryGetProperty("numHeightSegments", out var hs)) nZ = (int)GetD(hs, nZ);
+                    if (geometryElement.TryGetProperty("length", out var lenProp)) vesselLength = GetD(lenProp, vesselLength);
+                    if (geometryElement.TryGetProperty("roofRise", out var roofProp)) roofRise = GetD(roofProp, roofRise);
                 }
             }
 
@@ -192,19 +198,23 @@ namespace Sap2000WinFormsSample
                 {
                     diameter = D,
                     height = H,
+                    length = vesselLength,
                     numWallSegments = nCirc,
                     numHeightSegments = nZ,
-                    shellThickness = shellThickness
+                    shellThickness = shellThickness,
+                    roofRise = roofRise
                 },
                 loads = (liquidHeight > 0 && unitWeight > 0)
                     ? new Loads { liquidHeight = liquidHeight, unitWeight = unitWeight }
                     : null,
                 foundationElevation = z0,
-                fixBase = fixBase
+                fixBase = fixBase,
+                type = args.TryGetValue("type", out var typeObj) ? Convert.ToString(typeObj) : null
             };
 
-            int count = SapBuilder.BuildCylindricalReservoirFrames(model, spec);
-            return $"Cylindrical reservoir frames created: {count}";
+            var result = SapBuilder.BuildPressureVessel(model, spec);
+            string resolvedType = string.IsNullOrWhiteSpace(spec.type) ? "VerticalCylindrical" : spec.type;
+            return $"Pressure vessel ({resolvedType}) generated. joints={result.jointCount}, frameMembers={result.frameMembers}.";
         }
 
         private static double GetD(Dictionary<string, object> d, string k, double defVal)
@@ -497,6 +507,270 @@ namespace Sap2000WinFormsSample
             {
                 var json = JsonSerializer.Serialize(input, options);
                 return JsonSerializer.Deserialize<BuildingDesignSpec>(json, options);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public class BuildIndustrialStructureSkill : ISkill
+    {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.PointObj.AddCartesian",
+            "cSapModel.FrameObj.AddByPoint",
+            "cSapModel.PropFrame.SetRectangle"
+        };
+
+        public string Name => "BuildIndustrialStructure";
+        public string Description => "Model steel industrial sheds, heavy truss halls, and crane-ready bays with portal frames, roof purlins, and longitudinal bracing.";
+        public string ParamsSchema => @"{
+  ""structure"": {
+     ""name"": ""HeavyWorkshop"",
+     ""span"": 30.0,
+     ""baySpacing"": 7.5,
+     ""bayCount"": 6,
+     ""aisleCount"": 1,
+     ""eaveHeight"": 10.0,
+     ""ridgeHeight"": 13.0,
+     ""roof"": { ""system"": ""PortalRafter"", ""addPurlins"": true },
+     ""crane"": { ""enabled"": true, ""runwayElevation"": 7.2 }
+  }
+}";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
+
+        public string Execute(cSapModel model, Dictionary<string, object> args)
+        {
+            var spec = ResolveSpec(args) ?? new IndustrialStructureSpec();
+            var result = SapBuilder.BuildIndustrialStructure(model, spec);
+            string label = string.IsNullOrWhiteSpace(spec.name) ? "IndustrialStructure" : spec.name;
+            return $"Industrial structure '{label}' generated. joints={result.jointCount}, frames={result.frameMembers}, roofMembers={result.roofMembers}, braces={result.braceMembers}, craneGirders={result.craneGirders}.";
+        }
+
+        private static IndustrialStructureSpec ResolveSpec(Dictionary<string, object> args)
+        {
+            if (args == null)
+                return null;
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            if (args.TryGetValue("structure", out var obj))
+            {
+                var parsed = Deserialize(obj, options);
+                if (parsed != null) return parsed;
+            }
+
+            if (args.TryGetValue("spec", out var specObj))
+            {
+                var parsed = Deserialize(specObj, options);
+                if (parsed != null) return parsed;
+            }
+
+            var json = JsonSerializer.Serialize(args, options);
+            return Deserialize(json, options);
+        }
+
+        private static IndustrialStructureSpec Deserialize(object input, JsonSerializerOptions options)
+        {
+            if (input == null) return null;
+            if (input is IndustrialStructureSpec ready) return ready;
+            if (input is string s)
+            {
+                try { return IndustrialStructureSpec.FromJson(s); } catch { return null; }
+            }
+            if (input is JsonElement element)
+            {
+                try { return element.Deserialize<IndustrialStructureSpec>(options); } catch { return null; }
+            }
+            if (input is Dictionary<string, object> dict)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(dict, options);
+                    return JsonSerializer.Deserialize<IndustrialStructureSpec>(json, options);
+                }
+                catch { return null; }
+            }
+            try
+            {
+                var json = JsonSerializer.Serialize(input, options);
+                return JsonSerializer.Deserialize<IndustrialStructureSpec>(json, options);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public class BuildBridgeStructureSkill : ISkill
+    {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.PointObj.AddCartesian",
+            "cSapModel.FrameObj.AddByPoint",
+            "cSapModel.PropFrame.SetRectangle",
+            "cSapModel.AreaObj.AddByPoint"
+        };
+
+        public string Name => "BuildBridgeStructure";
+        public string Description => "Lay out girder, cable-stayed, arch, or truss bridges with configurable spans, towers, and deck width.";
+        public string ParamsSchema => @"{
+  ""bridge"": {
+    ""bridgeType"": ""CableStayed"",
+    ""deckWidth"": 18.0,
+    ""segmentsPerSpan"": 12,
+    ""spans"": [ { ""length"": 60.0 }, { ""length"": 110.0 }, { ""length"": 60.0 } ],
+    ""supports"": { ""pierHeight"": 25.0, ""columnsPerPier"": 2 }
+  }
+}";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
+
+        public string Execute(cSapModel model, Dictionary<string, object> args)
+        {
+            var spec = ResolveSpec(args) ?? new BridgeDesignSpec();
+            var result = SapBuilder.BuildBridgeStructure(model, spec);
+            string label = string.IsNullOrWhiteSpace(spec.name) ? spec.bridgeType ?? "Bridge" : spec.name;
+            return $"Bridge '{label}' created. joints={result.jointCount}, deckMembers={result.deckMembers}, supports={result.supportMembers}, cables={result.cableMembers}.";
+        }
+
+        private static BridgeDesignSpec ResolveSpec(Dictionary<string, object> args)
+        {
+            if (args == null)
+                return null;
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            if (args.TryGetValue("bridge", out var bridgeObj))
+            {
+                var parsed = Deserialize(bridgeObj, options);
+                if (parsed != null) return parsed;
+            }
+
+            if (args.TryGetValue("spec", out var specObj))
+            {
+                var parsed = Deserialize(specObj, options);
+                if (parsed != null) return parsed;
+            }
+
+            var json = JsonSerializer.Serialize(args, options);
+            return Deserialize(json, options);
+        }
+
+        private static BridgeDesignSpec Deserialize(object input, JsonSerializerOptions options)
+        {
+            if (input == null) return null;
+            if (input is BridgeDesignSpec ready) return ready;
+            if (input is string s)
+            {
+                try { return BridgeDesignSpec.FromJson(s); } catch { return null; }
+            }
+            if (input is JsonElement element)
+            {
+                try { return element.Deserialize<BridgeDesignSpec>(options); } catch { return null; }
+            }
+            if (input is Dictionary<string, object> dict)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(dict, options);
+                    return JsonSerializer.Deserialize<BridgeDesignSpec>(json, options);
+                }
+                catch { return null; }
+            }
+            try
+            {
+                var json = JsonSerializer.Serialize(input, options);
+                return JsonSerializer.Deserialize<BridgeDesignSpec>(json, options);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public class BuildSpecialStructureSkill : ISkill
+    {
+        private static readonly string[] _docRefs = new[]
+        {
+            "cSapModel.PointObj.AddCartesian",
+            "cSapModel.FrameObj.AddByPoint",
+            "cSapModel.AreaObj.AddByPoint"
+        };
+
+        public string Name => "BuildSpecialStructure";
+        public string Description => "Generate space frames, domes, membranes, towers, or cooling towers with advanced seismic accessories.";
+        public string ParamsSchema => @"{
+  ""structure"": {
+     ""structureType"": ""SpaceFrame"",
+     ""radius"": 28.0,
+     ""height"": 15.0,
+     ""segments"": 32,
+     ""tower"": { ""sides"": 4, ""segments"": 10 },
+     ""membrane"": { ""membraneSection"": ""MembranePTFE"" }
+  }
+}";
+        public IEnumerable<string> DocumentationReferences => _docRefs;
+
+        public string Execute(cSapModel model, Dictionary<string, object> args)
+        {
+            var spec = ResolveSpec(args) ?? new SpecialStructureSpec();
+            var result = SapBuilder.BuildSpecialStructure(model, spec);
+            string label = string.IsNullOrWhiteSpace(spec.name) ? spec.structureType ?? "SpecialStructure" : spec.name;
+            return $"Special structure '{label}' built. joints={result.jointCount}, frameMembers={result.frameMembers}, braces={result.braceMembers}, cables={result.cableMembers}, shells={result.shellElements}.";
+        }
+
+        private static SpecialStructureSpec ResolveSpec(Dictionary<string, object> args)
+        {
+            if (args == null)
+                return null;
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            if (args.TryGetValue("structure", out var structureObj))
+            {
+                var parsed = Deserialize(structureObj, options);
+                if (parsed != null) return parsed;
+            }
+
+            if (args.TryGetValue("spec", out var specObj))
+            {
+                var parsed = Deserialize(specObj, options);
+                if (parsed != null) return parsed;
+            }
+
+            var json = JsonSerializer.Serialize(args, options);
+            return Deserialize(json, options);
+        }
+
+        private static SpecialStructureSpec Deserialize(object input, JsonSerializerOptions options)
+        {
+            if (input == null) return null;
+            if (input is SpecialStructureSpec ready) return ready;
+            if (input is string s)
+            {
+                try { return SpecialStructureSpec.FromJson(s); } catch { return null; }
+            }
+            if (input is JsonElement element)
+            {
+                try { return element.Deserialize<SpecialStructureSpec>(options); } catch { return null; }
+            }
+            if (input is Dictionary<string, object> dict)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(dict, options);
+                    return JsonSerializer.Deserialize<SpecialStructureSpec>(json, options);
+                }
+                catch { return null; }
+            }
+            try
+            {
+                var json = JsonSerializer.Serialize(input, options);
+                return JsonSerializer.Deserialize<SpecialStructureSpec>(json, options);
             }
             catch
             {

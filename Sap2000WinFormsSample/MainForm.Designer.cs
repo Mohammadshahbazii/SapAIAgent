@@ -17,6 +17,8 @@
         private System.Windows.Forms.TextBox txtApiKey;
         private System.Windows.Forms.TextBox txtAiPrompt;
         private System.Windows.Forms.Button btnAiDesign;
+        private System.Windows.Forms.GroupBox grpCapabilities;
+        private System.Windows.Forms.RichTextBox txtCapabilities;
 
 
         protected override void Dispose(bool disposing)
@@ -38,6 +40,9 @@
             this.txtSavePath = new System.Windows.Forms.TextBox();
             this.lblPath = new System.Windows.Forms.Label();
             this.cmbUnits = new System.Windows.Forms.ComboBox();
+            this.grpCapabilities = new System.Windows.Forms.GroupBox();
+            this.txtCapabilities = new System.Windows.Forms.RichTextBox();
+            this.grpCapabilities.SuspendLayout();
             this.SuspendLayout();
             // 
             // btnStartNew
@@ -172,19 +177,46 @@
             this.btnAiDesign.UseVisualStyleBackColor = true;
             this.btnAiDesign.Click += new System.EventHandler(this.btnAiDesign_Click);
 
+            // grpCapabilities
+            this.grpCapabilities.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.grpCapabilities.Controls.Add(this.txtCapabilities);
+            this.grpCapabilities.Location = new System.Drawing.Point(16, 585);
+            this.grpCapabilities.Name = "grpCapabilities";
+            this.grpCapabilities.RightToLeft = System.Windows.Forms.RightToLeft.Yes;
+            this.grpCapabilities.Size = new System.Drawing.Size(588, 220);
+            this.grpCapabilities.TabIndex = 14;
+            this.grpCapabilities.TabStop = false;
+            this.grpCapabilities.Text = "گستره خدمات طراحی";
+
+            // txtCapabilities
+            this.txtCapabilities.BackColor = System.Drawing.SystemColors.Control;
+            this.txtCapabilities.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtCapabilities.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.txtCapabilities.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.txtCapabilities.Location = new System.Drawing.Point(3, 18);
+            this.txtCapabilities.Name = "txtCapabilities";
+            this.txtCapabilities.ReadOnly = true;
+            this.txtCapabilities.RightToLeft = System.Windows.Forms.RightToLeft.Yes;
+            this.txtCapabilities.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.None;
+            this.txtCapabilities.Size = new System.Drawing.Size(582, 199);
+            this.txtCapabilities.TabIndex = 0;
+            this.txtCapabilities.TabStop = false;
+            this.txtCapabilities.Text = "طراحی سازه‌های صنعتی و فلزی\n\n• سوله‌ها و سازه‌های صنعتی سنگین\n• سوله‌های فلزی با بادبند یا قاب خمشی\n• خرپاهای سنگین، جرثقیل‌دار، و سقف‌های شیبدار\n• پلتفرم‌های نفت و گاز\n• سازه‌های اسکله، دکل‌های ساحلی و فراساحلی\n• سازه‌های برجکی\n• برج خنک‌کننده، برج مخابراتی، برج نوری\n\n🛢 ۳. طراحی مخازن و سازه‌های تحت فشار\n\n• مخازن استوانه‌ای عمودی (Steel/Concrete)\n• تحلیل دیواره تحت فشار هیدرواستاتیک یا داخلی\n• طراحی ضخامت، سخت‌کننده‌ها، و فونداسیون\n• مخازن کروی یا افقی\n• تحت فشار داخلی یا بیرونی (Vacuum)\n• مخازن با سقف گنبدی یا مخروطی\n• تحلیل تنش در ناحیه انتقال سقف–دیواره\n• حوضچه‌ها و تانک‌های بتنی\n• مدل‌سازی با المان Shell یا Solid\n\n🌉 ۴. طراحی پل‌ها و سازه‌های زیرساختی\n\n• پل‌های تیرورقی، کابلی، قوسی و خرپایی\n• تحلیل سازه در اثر بارهای زنده، مرده، دما، زلزله، باد، و ترمز وسایل نقلیه\n• تحلیل زمان ساخت (Stage Construction)\n• افزودن تدریجی قطعات و تحلیل در هر مرحله\n• تحلیل دینامیکی پل‌ها تحت اثر زلزله یا عبور وسایل متحرک\n\n⚙️ ۵. سازه‌های خاص و غیرمتعارف\n\n• سازه‌های فضاکار (Space Frame / Dome)\n• تحلیل سه‌بعدی گنبدها و سقف‌های سبک\n• سازه‌های غشایی و کابلی (Tension Structures)\n• چادرها، سقف‌های پارچه‌ای، Membrane Roofs\n• سازه‌های ژئوتکنیکی ساده\n• دیواره نگهبان، فونداسیون شمعی، خاکریز مسلح (در حد مدل‌سازی خطی)\n• سازه‌های لرزه‌ای پیشرفته\n• میراگرها، جداسازهای لرزه‌ای (Base Isolator)";
+
             // Add to Controls
             this.Controls.Add(this.txtApiKey);
             this.Controls.Add(this.txtAiPrompt);
             this.Controls.Add(this.btnAiDesign);
+            this.Controls.Add(this.grpCapabilities);
 
             // Increase form height a bit
-            this.ClientSize = new System.Drawing.Size(622, 590);
+            this.ClientSize = new System.Drawing.Size(622, 830);
 
-            // 
+            //
             // MainForm
-            // 
+            //
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
-            this.ClientSize = new System.Drawing.Size(622, 421);
+            this.ClientSize = new System.Drawing.Size(622, 830);
             this.Controls.Add(this.cmbUnits);
             this.Controls.Add(this.btnCloseSap);
             this.Controls.Add(this.btnReadInfo);
@@ -198,6 +230,8 @@
             this.Controls.Add(this.btnStartNew);
             this.Name = "MainForm";
             this.Text = "SAP2000 API — WinForms Sample (v26)";
+            this.grpCapabilities.ResumeLayout(false);
+            this.grpCapabilities.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
         }

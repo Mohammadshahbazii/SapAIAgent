@@ -32,6 +32,9 @@ namespace Sap2000WinFormsSample
         public double shellThickness { get; set; }
         public int numWallSegments { get; set; }
         public int numHeightSegments { get; set; }
+        public double length { get; set; }
+        public double radius { get; set; }
+        public double roofRise { get; set; }
     }
 
     public class Materials
