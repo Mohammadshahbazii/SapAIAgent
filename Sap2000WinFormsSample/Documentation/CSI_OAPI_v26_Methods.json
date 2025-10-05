@@ -1,0 +1,92 @@
+[
+  {
+    "category": "Model Initialization",
+    "method": "cSapModel.InitializeNewModel",
+    "summary": "Creates a new SAP2000 model and sets the global working units.",
+    "parameters": ["eUnits units - Specifies the database units for the new model."],
+    "returns": "int status - 0 means success, non-zero indicates an error.",
+    "usage": "Call before defining any geometry so the database is created in the expected unit system.",
+    "keywords": ["initialize", "blank", "new model", "units"]
+  },
+  {
+    "category": "Model Initialization",
+    "method": "cSapModel.File.NewBlank",
+    "summary": "Clears the current model and populates it with the default empty template.",
+    "parameters": [],
+    "returns": "int status - 0 on success.",
+    "usage": "Run after InitializeNewModel to guarantee the database starts from a clean blank state.",
+    "keywords": ["blank", "template", "start"]
+  },
+  {
+    "category": "Units",
+    "method": "cSapModel.SetPresentUnits",
+    "summary": "Changes the present units used for subsequent API inputs and outputs.",
+    "parameters": ["eUnits units - Units for the interaction session."],
+    "returns": "int status - 0 if the working units are updated.",
+    "usage": "Call whenever numeric inputs will be interpreted in a different unit system than the database default.",
+    "keywords": ["units", "set units", "present units", "conversion"]
+  },
+  {
+    "category": "Geometry - Points",
+    "method": "cSapModel.PointObj.AddCartesian",
+    "summary": "Adds a joint object at the specified X, Y, Z location.",
+    "parameters": ["double X", "double Y", "double Z", "string name - Optional unique ID"],
+    "returns": "int status, string name - Non-zero status indicates an error.",
+    "usage": "Use before framing members or area objects that require end joints.",
+    "keywords": ["joint", "point", "coordinate", "node"]
+  },
+  {
+    "category": "Geometry - Frames",
+    "method": "cSapModel.FrameObj.AddByPoint",
+    "summary": "Creates a frame object between two existing joints.",
+    "parameters": ["string point1", "string point2", "string name", "string propName"],
+    "returns": "int status, string name", 
+    "usage": "Supports beams, columns, braces, or tank shell segments defined by point connectivity.",
+    "keywords": ["frame", "beam", "column", "segment"]
+  },
+  {
+    "category": "Loads",
+    "method": "cSapModel.LoadPatterns.Add",
+    "summary": "Defines a load pattern with the requested type and self-weight multiplier.",
+    "parameters": ["string name", "eLoadPatternType type", "double selfWeightMult"],
+    "returns": "int status",
+    "usage": "Needed before assigning uniform loads, hydrostatic pressures, or gravity effects.",
+    "keywords": ["load pattern", "gravity", "pressure", "hydrostatic", "dead load"]
+  },
+  {
+    "category": "Analysis",
+    "method": "cSapModel.Analyze.RunAnalysis",
+    "summary": "Runs the structural analysis for all enabled load cases.",
+    "parameters": [],
+    "returns": "int status",
+    "usage": "Call after all geometry, properties, and load cases have been defined and activated.",
+    "keywords": ["analysis", "run", "solve", "load case"]
+  },
+  {
+    "category": "Analysis",
+    "method": "cSapModel.Analyze.DeleteResults",
+    "summary": "Clears any stored analysis results so the solver recomputes values on the next run.",
+    "parameters": [],
+    "returns": "int status",
+    "usage": "Use before rerunning an analysis after major model modifications.",
+    "keywords": ["clear", "reset", "results"]
+  },
+  {
+    "category": "Model Information",
+    "method": "cSapModel.GetModelFilename",
+    "summary": "Retrieves the current model path or file name.",
+    "parameters": ["bool includePath - Optional toggle (default true)."],
+    "returns": "string filename",
+    "usage": "Useful for logging and verifying the save location of the active model.",
+    "keywords": ["filename", "path", "info"]
+  },
+  {
+    "category": "Model Information",
+    "method": "cSapModel.PointObj.GetNameList",
+    "summary": "Retrieves the list of joint object names and the total joint count.",
+    "parameters": ["int numberNames", "string[] names"],
+    "returns": "int status",
+    "usage": "Use to understand the discretization level or to iterate over joint names for loads and assignments.",
+    "keywords": ["joint list", "names", "count", "iterate"]
+  }
+]
