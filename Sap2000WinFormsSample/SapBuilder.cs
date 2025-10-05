@@ -519,16 +519,48 @@ namespace Sap2000WinFormsSample
         {
             if (propArea == null) throw new ArgumentNullException(nameof(propArea));
 
+            int shellValue = ConvertShellTypeValue(shellType);
+            double membrane = 0.0;
+            double bending = 0.0;
+            double shear = 0.0;
+            double thermal = 0.0;
+
+            // Attempt a dynamic dispatch first. Some versions of the SAP2000 COM
+            // libraries expose the SetShell method only through the dispatch
+            // interface, and older builds suffix the method name with "_1". Using
+            // dynamic keeps the late-bound invocation logic simple while still
+            // allowing us to fall back to the more exhaustive reflection-based
+            // search below when needed.
+            try
+            {
+                dynamic area = propArea;
+                return area.SetShell(propertyName, shellValue, material, thickness, membrane, bending, shear, thermal);
+            }
+            catch (RuntimeBinderException)
+            {
+                // Continue to the other strategies.
+            }
+
+            try
+            {
+                dynamic area = propArea;
+                return area.SetShell_1(propertyName, shellValue, material, thickness, membrane, bending, shear, thermal);
+            }
+            catch (RuntimeBinderException)
+            {
+                // Continue to the reflection-based search below.
+            }
+
             var args = new object[]
             {
                 propertyName,
-                ConvertShellTypeValue(shellType),
+                shellValue,
                 material,
                 thickness,
-                0.0,
-                0.0,
-                0.0,
-                0.0
+                membrane,
+                bending,
+                shear,
+                thermal
             };
 
             return InvokeComMethod(propArea, "SetShell", args);
@@ -591,9 +623,12 @@ namespace Sap2000WinFormsSample
                 if (seen.Add(baseName))
                     yield return baseName;
 
-                string suffixed = baseName + "_1";
-                if (seen.Add(suffixed))
-                    yield return suffixed;
+                for (int i = 1; i <= 4; i++)
+                {
+                    string suffixed = baseName + "_" + i.ToString(CultureInfo.InvariantCulture);
+                    if (seen.Add(suffixed))
+                        yield return suffixed;
+                }
             }
 
             if (comType == null)
