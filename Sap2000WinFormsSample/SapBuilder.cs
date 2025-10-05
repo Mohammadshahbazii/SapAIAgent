@@ -480,7 +480,7 @@ namespace Sap2000WinFormsSample
             string created = "";
             int createRet = model.PointObj.AddCartesian(x, y, z, ref created);
             if (createRet != 0) throw new ApplicationException("Failed to create auxiliary point.");
-            cache?[key] = created;
+            cache[key] = created;
             return created;
         }
 

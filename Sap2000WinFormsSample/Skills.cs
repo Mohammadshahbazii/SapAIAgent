@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using SAP2000v1;
+using Sap2000WinFormsSample;
 
 namespace Sap2000WinFormsSample
 {
@@ -123,10 +124,10 @@ namespace Sap2000WinFormsSample
                 else if (geometryObj is JsonElement geometryElement && geometryElement.ValueKind == JsonValueKind.Object)
                 {
                     if (geometryElement.TryGetProperty("diameter", out var v)) D = GetD(v, D);
-                    if (geometryElement.TryGetProperty("height", out var v)) H = GetD(v, H);
-                    if (geometryElement.TryGetProperty("shellThickness", out var v)) shellThickness = GetD(v, shellThickness);
-                    if (geometryElement.TryGetProperty("numWallSegments", out var v)) nCirc = (int)GetD(v, nCirc);
-                    if (geometryElement.TryGetProperty("numHeightSegments", out var v)) nZ = (int)GetD(v, nZ);
+                    if (geometryElement.TryGetProperty("height", out var h)) H = GetD(h, H);
+                    if (geometryElement.TryGetProperty("shellThickness", out var s)) shellThickness = GetD(s, shellThickness);
+                    if (geometryElement.TryGetProperty("numWallSegments", out var n)) nCirc = (int)GetD(n, nCirc);
+                    if (geometryElement.TryGetProperty("numHeightSegments", out var hs)) nZ = (int)GetD(hs, nZ);
                 }
             }
 
@@ -140,7 +141,7 @@ namespace Sap2000WinFormsSample
                 else if (loadsObj is JsonElement loadElement && loadElement.ValueKind == JsonValueKind.Object)
                 {
                     if (loadElement.TryGetProperty("liquidHeight", out var v)) liquidHeight = GetD(v, liquidHeight);
-                    if (loadElement.TryGetProperty("unitWeight", out var v)) unitWeight = GetD(v, unitWeight);
+                    if (loadElement.TryGetProperty("unitWeight", out var u)) unitWeight = GetD(u, unitWeight);
                 }
             }
 
@@ -361,21 +362,29 @@ namespace Sap2000WinFormsSample
         }
     }
 
+    // The issue arises because the JSON-like schema provided in the ParamsSchema property is being treated as C# code.  
+    // To fix this, the JSON-like schema should be enclosed in a verbatim string literal (@"") to ensure it is treated as a string.  
+
     public class BuildMultiStoryBuildingSkill : ISkill
     {
         public string Name => "BuildMultiStoryBuilding";
         public string Description => "Generate multi-story steel/concrete building frames, shear walls, braces, and composite slabs based on a parametric layout.";
-        public string ParamsSchema => @"{
-  "name": "OfficeTower",
-  "units": { "length": "m", "force": "kN" },
-  "layout": { "baysX": 4, "baysY": 3, "baySpacingX": 6.0, "baySpacingY": 7.5 },
-  "stories": [
-    { "name": "L1", "height": 4.2, "beamSection": "B350x450", "columnSection": "C400x400" },
-    { "name": "L2", "height": 3.8 }
-  ],
-  "lateralSystem": { "systemType": "Dual", "addBracesInBothDirections": true, "addShearWallCore": true },
-  "deck": { "type": "Composite", "thickness": 0.13 }
-}";
+        public string ParamsSchema => @"
+       {
+           ""name"": ""OfficeTower"",
+           ""units"": { ""length"": ""m"", ""force"": ""kN"" },
+           ""layout"": { ""baysX"": 4, ""baysY"": 3, ""baySpacingX"": 6.0, ""baySpacingY"": 7.5 },
+           ""stories"": [
+               { ""name"": ""L1"", ""height"": 4.2, ""beamSection"": ""B350x450"", ""columnSection"": ""C400x400"" },
+               { ""name"": ""L2"", ""height"": 3.8 }
+           ],
+           ""lateralSystem"": { ""systemType"": ""Dual"", ""addBracesInBothDirections"": true, ""addShearWallCore"": true },
+           ""deck"": { ""type"": ""Composite"", ""thickness"": 0.13 }
+       }";
+
+        // The rest of the class remains unchanged.  
+
+
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -463,7 +472,7 @@ namespace Sap2000WinFormsSample
     {
         public string Name => "ConfigureDesignCodes";
         public string Description => "Set steel, concrete, and composite design codes so automated checks follow the desired standards.";
-        public string ParamsSchema => @"{ "steelCode": "AISC360-16", "concreteCode": "ACI318-19", "compositeBeamCode": "Eurocode4" }";
+        public string ParamsSchema => @"{ ""steelCode"": ""AISC360-16"", ""concreteCode"": ""ACI318-19"", ""compositeBeamCode"": ""Eurocode4"" }";
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -538,13 +547,15 @@ namespace Sap2000WinFormsSample
     {
         public string Name => "SetupAdvancedAnalyses";
         public string Description => "Create modal, response spectrum, time history, and pushover cases plus optional plastic hinge defaults.";
-        public string ParamsSchema => @"{
-  "modal": { "enabled": true, "caseName": "MODAL", "modes": 12 },
-  "responseSpectrum": { "enabled": true, "caseName": "RS-X", "function": "UBC97" },
-  "timeHistory": { "enabled": false, "caseName": "TH-X", "function": "ElCentro" },
-  "pushover": { "enabled": true, "caseName": "PUSH-X" },
-  "assignPlasticHinges": true
-}";
+        public string ParamsSchema => @"{  
+       ""modal"": { ""enabled"": true, ""caseName"": ""MODAL"", ""modes"": 12 },  
+       ""responseSpectrum"": { ""enabled"": true, ""caseName"": ""RS-X"", ""function"": ""UBC97"" },  
+       ""timeHistory"": { ""enabled"": false, ""caseName"": ""TH-X"", ""function"": ""ElCentro"" },  
+       ""pushover"": { ""enabled"": true, ""caseName"": ""PUSH-X"" },  
+       ""assignPlasticHinges"": true  
+   }";
+
+
 
         public string Execute(cSapModel model, Dictionary<string, object> args)
         {
@@ -656,11 +667,10 @@ namespace Sap2000WinFormsSample
                 }
             }
 
-            return responses.Count > 0 ? string.Join(" 
-", responses) : "No advanced analysis changes applied.";
+            return responses.Count > 0 ? string.Join("\n", responses) : "No advanced analysis changes applied.";
         }
 
-        private static void EnsureBasePatterns(cSapModel model)
+        void EnsureBasePatterns(cSapModel model)
         {
             SapApiReflection.TryAddLoadPattern(model, "DEAD", "Dead", 1.0, true);
             SapApiReflection.TryAddLoadPattern(model, "LIVE", "Live", 0.0, true);
@@ -670,7 +680,7 @@ namespace Sap2000WinFormsSample
             SapApiReflection.TryAddLoadPattern(model, "WINDY", "Wind", 0.0, true);
         }
 
-        private static bool TryGetToggle(Dictionary<string, object> args, string key, out Dictionary<string, object> toggle)
+        bool TryGetToggle(Dictionary<string, object> args, string key, out Dictionary<string, object> toggle)
         {
             toggle = null;
             if (args == null || !args.TryGetValue(key, out var value) || value == null)
@@ -698,7 +708,7 @@ namespace Sap2000WinFormsSample
             return false;
         }
 
-        private static void AssignDefaultPlasticHinges(cSapModel model)
+        void AssignDefaultPlasticHinges(cSapModel model)
         {
             int number = 0;
             string[] frameNames = null;
@@ -713,7 +723,7 @@ namespace Sap2000WinFormsSample
             }
         }
 
-        private static string GetString(Dictionary<string, object> args, string key, string defaultValue)
+        string GetString(Dictionary<string, object> args, string key, string defaultValue)
         {
             if (args == null || !args.TryGetValue(key, out var value) || value == null)
                 return defaultValue;
@@ -730,7 +740,7 @@ namespace Sap2000WinFormsSample
             return Convert.ToString(value, CultureInfo.InvariantCulture) ?? defaultValue;
         }
 
-        private static bool GetBool(Dictionary<string, object> args, string key, bool defaultValue)
+        bool GetBool(Dictionary<string, object> args, string key, bool defaultValue)
         {
             if (args == null || !args.TryGetValue(key, out var value) || value == null)
                 return defaultValue;
@@ -763,7 +773,7 @@ namespace Sap2000WinFormsSample
             return defaultValue;
         }
 
-        private static int GetInt(Dictionary<string, object> args, string key, int defaultValue)
+        int GetInt(Dictionary<string, object> args, string key, int defaultValue)
         {
             if (args == null || !args.TryGetValue(key, out var value) || value == null)
                 return defaultValue;
@@ -993,3 +1003,4 @@ namespace Sap2000WinFormsSample
         }
     }
 }
+
