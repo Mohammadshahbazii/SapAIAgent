@@ -513,18 +513,16 @@ namespace Sap2000WinFormsSample
             return 1;
         }
 
+        private const int ShellThinValue = 1;
+
         private static int SetShellProperty(object propArea, string propertyName, object shellType, string material, double thickness)
         {
-            if (propArea is cPropArea typedPropArea)
-            {
-                eShellType shellEnum = ConvertToShellTypeEnum(shellType);
-                return typedPropArea.SetShell(propertyName, shellEnum, material, thickness, 0, 0, 0, 0);
-            }
+            if (propArea == null) throw new ArgumentNullException(nameof(propArea));
 
             var args = new object[]
             {
                 propertyName,
-                ConvertShellTypeForInvocation(shellType),
+                ConvertShellTypeValue(shellType),
                 material,
                 thickness,
                 0.0,
@@ -536,35 +534,19 @@ namespace Sap2000WinFormsSample
             return InvokeComMethod(propArea, "SetShell", args);
         }
 
-        private static eShellType ConvertToShellTypeEnum(object shellType)
-        {
-            if (shellType is eShellType direct)
-                return direct;
-
-            if (shellType is Enum enumValue)
-                return (eShellType)Convert.ToInt32(enumValue, CultureInfo.InvariantCulture);
-
-            if (shellType is IConvertible convertible)
-                return (eShellType)convertible.ToInt32(CultureInfo.InvariantCulture);
-
-            return eShellType.ShellThin;
-        }
-
-        private static object ConvertShellTypeForInvocation(object shellType)
+        private static int ConvertShellTypeValue(object shellType)
         {
             if (shellType == null)
-                return (int)eShellType.ShellThin;
+                return ShellThinValue;
 
-            if (shellType is eShellType)
-                return shellType;
-
-            if (shellType is Enum enumValue)
-                return Convert.ToInt32(enumValue, CultureInfo.InvariantCulture);
+            var type = shellType.GetType();
+            if (type.IsEnum)
+                return Convert.ToInt32(shellType, CultureInfo.InvariantCulture);
 
             if (shellType is IConvertible convertible)
                 return convertible.ToInt32(CultureInfo.InvariantCulture);
 
-            return (int)eShellType.ShellThin;
+            return ShellThinValue;
         }
 
         private static int InvokeComMethod(object comObject, string methodName, object[] args)
