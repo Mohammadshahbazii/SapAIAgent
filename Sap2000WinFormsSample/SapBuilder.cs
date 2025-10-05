@@ -1473,30 +1473,6 @@ namespace Sap2000WinFormsSample
                 {
                 }
 
-                if (propArea is cPropArea typedArea && TryConvertToShellEnum(shellArgument, out eShellType typedShell))
-                {
-                    try
-                    {
-                        return typedArea.SetShell(propertyName, typedShell, material, thickness, membrane, bending, shear, thermal);
-                    }
-                    catch (COMException)
-                    {
-                    }
-                    catch (MissingMethodException)
-                    {
-                    }
-
-                    try
-                    {
-                        return typedArea.SetShell(propertyName, typedShell, material, thickness);
-                    }
-                    catch (COMException)
-                    {
-                    }
-                    catch (MissingMethodException)
-                    {
-                    }
-                }
             }
 
             object Optional(object value) => value ?? Type.Missing;
@@ -1529,27 +1505,6 @@ namespace Sap2000WinFormsSample
                 return convertible.ToInt32(CultureInfo.InvariantCulture);
 
             return ShellThinValue;
-        }
-
-        private static bool TryConvertToShellEnum(object candidate, out eShellType value)
-        {
-            if (candidate is eShellType typed)
-            {
-                value = typed;
-                return true;
-            }
-
-            try
-            {
-                int converted = ConvertShellTypeValue(candidate);
-                value = (eShellType)converted;
-                return true;
-            }
-            catch
-            {
-                value = (eShellType)ShellThinValue;
-                return false;
-            }
         }
 
         private static IEnumerable<object> EnumerateShellTypeArguments(object shellType)
@@ -1863,7 +1818,7 @@ namespace Sap2000WinFormsSample
                 },
                 ["MembranePTFE"] = new MaterialDefinition
                 {
-                    Type = eMatType.Other,
+                    Type = ResolveMaterialTypeValue("Other", eMatType.Concrete),
                     YoungsModulus = 1_900_000,
                     PoissonRatio = 0.3,
                     ThermalExpansion = 1.7e-5,
@@ -1873,11 +1828,35 @@ namespace Sap2000WinFormsSample
 
         private sealed class MaterialDefinition
         {
-            public eMatType Type { get; set; }
+            public object Type { get; set; }
             public double YoungsModulus { get; set; }
             public double PoissonRatio { get; set; }
             public double ThermalExpansion { get; set; }
             public double Density { get; set; }
+        }
+
+        private static object ResolveMaterialTypeValue(string memberName, eMatType fallback)
+        {
+            var enumType = typeof(cSapModel).Assembly?.GetType("SAP2000v1.eMatType");
+            if (!string.IsNullOrWhiteSpace(memberName) && enumType != null && Enum.IsDefined(enumType, memberName))
+                return Enum.Parse(enumType, memberName);
+
+            return fallback;
+        }
+
+        private static int ConvertMaterialTypeValue(object materialType)
+        {
+            if (materialType == null)
+                return Convert.ToInt32(eMatType.Steel, CultureInfo.InvariantCulture);
+
+            var type = materialType.GetType();
+            if (type.IsEnum)
+                return Convert.ToInt32(materialType, CultureInfo.InvariantCulture);
+
+            if (materialType is IConvertible convertible)
+                return convertible.ToInt32(CultureInfo.InvariantCulture);
+
+            return Convert.ToInt32(eMatType.Steel, CultureInfo.InvariantCulture);
         }
 
         private static void EnsureMaterials(cSapModel model, params string[] materialNames)
@@ -1985,12 +1964,15 @@ namespace Sap2000WinFormsSample
             double massPerVolume = density / kgPerTonne; // tonne/m^3
             double shearModulus = definition.YoungsModulus / (2.0 * (1.0 + definition.PoissonRatio));
 
+            object materialType = definition.Type ?? eMatType.Steel;
+            int materialTypeValue = ConvertMaterialTypeValue(materialType);
+
             int materialRet = TryInvokeMaterialMethod(propMaterial, "SetMaterial", new[]
             {
-                new object[] { materialName, definition.Type },
-                new object[] { materialName, (int)definition.Type },
-                new object[] { materialName, definition.Type, string.Empty, string.Empty },
-                new object[] { materialName, (int)definition.Type, string.Empty, string.Empty }
+                new object[] { materialName, materialType },
+                new object[] { materialName, materialTypeValue },
+                new object[] { materialName, materialType, string.Empty, string.Empty },
+                new object[] { materialName, materialTypeValue, string.Empty, string.Empty }
             });
 
             if (materialRet != 0)
