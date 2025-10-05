@@ -1160,6 +1160,8 @@ namespace Sap2000WinFormsSample
             if (model.SetPresentUnits(units) != 0)
                 throw new ApplicationException("Failed to set units for special structure build.");
 
+            var pointCache = new Dictionary<string, string>(StringComparer.Ordinal);
+
             string AddPoint(double x, double y, double z)
             {
                 return AddOrGetPoint(model, pointCache, x, y, z);
@@ -1178,15 +1180,11 @@ namespace Sap2000WinFormsSample
 
             int AddShell(string[] points, string property)
             {
-                string areaName = string.Empty;
-                string prop = property;
-                int ret = model.AreaObj.AddByPoint(points, ref areaName, ref prop);
+                int ret = AddAreaByPoint(model, points, property, out string areaName);
                 if (ret != 0)
                     throw new ApplicationException("Failed to create shell area for special structure.");
                 return 1;
             }
-
-            var pointCache = new Dictionary<string, string>(StringComparer.Ordinal);
             var definedSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new SpecialStructureBuildResult();
 
@@ -1486,10 +1484,10 @@ namespace Sap2000WinFormsSample
 
                     try
                     {
-                        object result = comType.InvokeMember(candidate, flags, binder: null, target: comObject, args: args);
-                        if (result == null)
+                        object invocationResult = comType.InvokeMember(candidate, flags, binder: null, target: comObject, args: args);
+                        if (invocationResult == null)
                             return 0;
-                        return Convert.ToInt32(result, CultureInfo.InvariantCulture);
+                        return Convert.ToInt32(invocationResult, CultureInfo.InvariantCulture);
                     }
                     catch (MissingMethodException)
                     {
@@ -1599,11 +1597,24 @@ namespace Sap2000WinFormsSample
                     }
                     catch (RuntimeBinderException)
                     {
-                        string name = string.Empty;
-                        string propCopy = propertyValue;
-                        int ret = areaObj.AddByPoint(pointNames, ref name, ref propCopy);
-                        createdName = name ?? string.Empty;
-                        return ret;
+                        try
+                        {
+                            var argsList = new object[] { pointNames, string.Empty, propertyValue };
+                            int ret = InvokeComMethod(areaObj, "AddByPoint", new[] { argsList });
+                            if (argsList.Length > 1 && argsList[1] is string updatedName)
+                                createdName = updatedName ?? string.Empty;
+                            else
+                                createdName = string.Empty;
+                            return ret;
+                        }
+                        catch (MissingMethodException)
+                        {
+                            string name = string.Empty;
+                            string propCopy = propertyValue;
+                            int ret = areaObj.AddByPoint(pointNames, ref name, ref propCopy);
+                            createdName = name ?? string.Empty;
+                            return ret;
+                        }
                     }
                 }
             }
