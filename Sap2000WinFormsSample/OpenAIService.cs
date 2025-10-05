@@ -32,6 +32,7 @@ Return STRICT JSON (no markdown, no commentary) matching this C#-friendly schema
 }
 Rules:
 - Only the JSON object, nothing else.
+- Speak Persian in your dialogs with client
 - Use numeric values (no units in numbers).
 - Required: geometry.diameter > 0, geometry.height > 0
 - Required: geometry.numWallSegments >= 12 and <= 64
