@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using SAP2000v1;
 using Microsoft.CSharp.RuntimeBinder;
 
@@ -492,18 +493,12 @@ namespace Sap2000WinFormsSample
             string mat = def?.material ?? defaultMaterial ?? "Concrete4000";
             double thickness = def?.thickness ?? 0.2;
 
-            dynamic propArea = model.PropArea;
+            object propArea = model?.PropArea;
+            if (propArea == null)
+                throw new ApplicationException("SAP2000 PropArea interface is unavailable.");
+
             object shellType = ResolveShellThin(model);
-            int ret;
-            try
-            {
-                ret = propArea.SetShell(propertyName, shellType, mat, thickness, 0, 0, 0, 0);
-            }
-            catch (RuntimeBinderException)
-            {
-                int shellTypeValue = Convert.ToInt32(shellType, CultureInfo.InvariantCulture);
-                ret = propArea.SetShell(propertyName, shellTypeValue, mat, thickness, 0, 0, 0, 0);
-            }
+            int ret = SetShellProperty(propArea, propertyName, shellType, mat, thickness);
             if (ret != 0) throw new ApplicationException($"Failed to define shell property '{propertyName}'.");
         }
 
@@ -516,6 +511,79 @@ namespace Sap2000WinFormsSample
 
             // Fallback to integer constant used by older SAP2000 builds: ShellThin = 1.
             return 1;
+        }
+
+        private static int SetShellProperty(object propArea, string propertyName, object shellType, string material, double thickness)
+        {
+            if (propArea is cPropArea typedPropArea)
+            {
+                eShellType shellEnum = ConvertToShellTypeEnum(shellType);
+                return typedPropArea.SetShell(propertyName, shellEnum, material, thickness, 0, 0, 0, 0);
+            }
+
+            var args = new object[]
+            {
+                propertyName,
+                ConvertShellTypeForInvocation(shellType),
+                material,
+                thickness,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            };
+
+            return InvokeComMethod(propArea, "SetShell", args);
+        }
+
+        private static eShellType ConvertToShellTypeEnum(object shellType)
+        {
+            if (shellType is eShellType direct)
+                return direct;
+
+            if (shellType is Enum enumValue)
+                return (eShellType)Convert.ToInt32(enumValue, CultureInfo.InvariantCulture);
+
+            if (shellType is IConvertible convertible)
+                return (eShellType)convertible.ToInt32(CultureInfo.InvariantCulture);
+
+            return eShellType.ShellThin;
+        }
+
+        private static object ConvertShellTypeForInvocation(object shellType)
+        {
+            if (shellType == null)
+                return (int)eShellType.ShellThin;
+
+            if (shellType is eShellType)
+                return shellType;
+
+            if (shellType is Enum enumValue)
+                return Convert.ToInt32(enumValue, CultureInfo.InvariantCulture);
+
+            if (shellType is IConvertible convertible)
+                return convertible.ToInt32(CultureInfo.InvariantCulture);
+
+            return (int)eShellType.ShellThin;
+        }
+
+        private static int InvokeComMethod(object comObject, string methodName, object[] args)
+        {
+            if (comObject == null) throw new ArgumentNullException(nameof(comObject));
+
+            const BindingFlags flags = BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public;
+            Type comType = comObject.GetType();
+
+            try
+            {
+                object result = comType.InvokeMember(methodName, flags, binder: null, target: comObject, args: args);
+                return Convert.ToInt32(result, CultureInfo.InvariantCulture);
+            }
+            catch (MissingMethodException)
+            {
+                object result = comType.InvokeMember(methodName + "_1", flags, binder: null, target: comObject, args: args);
+                return Convert.ToInt32(result, CultureInfo.InvariantCulture);
+            }
         }
 
         private static int AddAreaByPoint(cSapModel model, string[] pointNames, string property, out string createdName)
