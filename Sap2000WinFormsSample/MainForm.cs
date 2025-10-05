@@ -20,6 +20,9 @@ namespace Sap2000WinFormsSample
             _reg.Register(new InitializeBlankModelSkill());
             _reg.Register(new SetUnitsSkill());
             _reg.Register(new BuildCylindricalReservoirSkill());
+            _reg.Register(new BuildMultiStoryBuildingSkill());
+            _reg.Register(new ConfigureDesignCodesSkill());
+            _reg.Register(new SetupAdvancedAnalysesSkill());
             _reg.Register(new SaveModelSkill());
             _reg.Register(new RunAnalysisSkill());
             _reg.Register(new GetModelInfoSkill());

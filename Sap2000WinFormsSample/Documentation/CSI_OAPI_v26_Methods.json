@@ -3,10 +3,17 @@
     "category": "Model Initialization",
     "method": "cSapModel.InitializeNewModel",
     "summary": "Creates a new SAP2000 model and sets the global working units.",
-    "parameters": ["eUnits units - Specifies the database units for the new model."],
+    "parameters": [
+      "eUnits units - Specifies the database units for the new model."
+    ],
     "returns": "int status - 0 means success, non-zero indicates an error.",
     "usage": "Call before defining any geometry so the database is created in the expected unit system.",
-    "keywords": ["initialize", "blank", "new model", "units"]
+    "keywords": [
+      "initialize",
+      "blank",
+      "new model",
+      "units"
+    ]
   },
   {
     "category": "Model Initialization",
@@ -15,43 +22,84 @@
     "parameters": [],
     "returns": "int status - 0 on success.",
     "usage": "Run after InitializeNewModel to guarantee the database starts from a clean blank state.",
-    "keywords": ["blank", "template", "start"]
+    "keywords": [
+      "blank",
+      "template",
+      "start"
+    ]
   },
   {
     "category": "Units",
     "method": "cSapModel.SetPresentUnits",
     "summary": "Changes the present units used for subsequent API inputs and outputs.",
-    "parameters": ["eUnits units - Units for the interaction session."],
+    "parameters": [
+      "eUnits units - Units for the interaction session."
+    ],
     "returns": "int status - 0 if the working units are updated.",
     "usage": "Call whenever numeric inputs will be interpreted in a different unit system than the database default.",
-    "keywords": ["units", "set units", "present units", "conversion"]
+    "keywords": [
+      "units",
+      "set units",
+      "present units",
+      "conversion"
+    ]
   },
   {
     "category": "Geometry - Points",
     "method": "cSapModel.PointObj.AddCartesian",
     "summary": "Adds a joint object at the specified X, Y, Z location.",
-    "parameters": ["double X", "double Y", "double Z", "string name - Optional unique ID"],
+    "parameters": [
+      "double X",
+      "double Y",
+      "double Z",
+      "string name - Optional unique ID"
+    ],
     "returns": "int status, string name - Non-zero status indicates an error.",
     "usage": "Use before framing members or area objects that require end joints.",
-    "keywords": ["joint", "point", "coordinate", "node"]
+    "keywords": [
+      "joint",
+      "point",
+      "coordinate",
+      "node"
+    ]
   },
   {
     "category": "Geometry - Frames",
     "method": "cSapModel.FrameObj.AddByPoint",
     "summary": "Creates a frame object between two existing joints.",
-    "parameters": ["string point1", "string point2", "string name", "string propName"],
-    "returns": "int status, string name", 
+    "parameters": [
+      "string point1",
+      "string point2",
+      "string name",
+      "string propName"
+    ],
+    "returns": "int status, string name",
     "usage": "Supports beams, columns, braces, or tank shell segments defined by point connectivity.",
-    "keywords": ["frame", "beam", "column", "segment"]
+    "keywords": [
+      "frame",
+      "beam",
+      "column",
+      "segment"
+    ]
   },
   {
     "category": "Loads",
     "method": "cSapModel.LoadPatterns.Add",
     "summary": "Defines a load pattern with the requested type and self-weight multiplier.",
-    "parameters": ["string name", "eLoadPatternType type", "double selfWeightMult"],
+    "parameters": [
+      "string name",
+      "eLoadPatternType type",
+      "double selfWeightMult"
+    ],
     "returns": "int status",
     "usage": "Needed before assigning uniform loads, hydrostatic pressures, or gravity effects.",
-    "keywords": ["load pattern", "gravity", "pressure", "hydrostatic", "dead load"]
+    "keywords": [
+      "load pattern",
+      "gravity",
+      "pressure",
+      "hydrostatic",
+      "dead load"
+    ]
   },
   {
     "category": "Analysis",
@@ -60,7 +108,12 @@
     "parameters": [],
     "returns": "int status",
     "usage": "Call after all geometry, properties, and load cases have been defined and activated.",
-    "keywords": ["analysis", "run", "solve", "load case"]
+    "keywords": [
+      "analysis",
+      "run",
+      "solve",
+      "load case"
+    ]
   },
   {
     "category": "Analysis",
@@ -69,24 +122,344 @@
     "parameters": [],
     "returns": "int status",
     "usage": "Use before rerunning an analysis after major model modifications.",
-    "keywords": ["clear", "reset", "results"]
+    "keywords": [
+      "clear",
+      "reset",
+      "results"
+    ]
   },
   {
     "category": "Model Information",
     "method": "cSapModel.GetModelFilename",
     "summary": "Retrieves the current model path or file name.",
-    "parameters": ["bool includePath - Optional toggle (default true)."],
+    "parameters": [
+      "bool includePath - Optional toggle (default true)."
+    ],
     "returns": "string filename",
     "usage": "Useful for logging and verifying the save location of the active model.",
-    "keywords": ["filename", "path", "info"]
+    "keywords": [
+      "filename",
+      "path",
+      "info"
+    ]
   },
   {
     "category": "Model Information",
     "method": "cSapModel.PointObj.GetNameList",
     "summary": "Retrieves the list of joint object names and the total joint count.",
-    "parameters": ["int numberNames", "string[] names"],
+    "parameters": [
+      "int numberNames",
+      "string[] names"
+    ],
     "returns": "int status",
     "usage": "Use to understand the discretization level or to iterate over joint names for loads and assignments.",
-    "keywords": ["joint list", "names", "count", "iterate"]
+    "keywords": [
+      "joint list",
+      "names",
+      "count",
+      "iterate"
+    ]
+  },
+  {
+    "category": "Geometry - Frames",
+    "method": "cSapModel.PropFrame.SetRectangle",
+    "summary": "Defines a prismatic frame section with rectangular dimensions and an assigned material.",
+    "parameters": [
+      "string name",
+      "string material",
+      "double depth",
+      "double width"
+    ],
+    "returns": "int status",
+    "usage": "Call before assigning the section name to frame objects so members use the intended dimensions.",
+    "keywords": [
+      "section",
+      "frame property",
+      "rectangle",
+      "beam",
+      "column"
+    ]
+  },
+  {
+    "category": "Geometry - Areas",
+    "method": "cSapModel.AreaObj.AddByPoint",
+    "summary": "Creates an area (shell) object by specifying an ordered loop of joint names.",
+    "parameters": [
+      "string[] pointNames",
+      "string name",
+      "string property"
+    ],
+    "returns": "int status",
+    "usage": "Useful for floor slabs, shear walls, or diaphragms tied to existing grid points.",
+    "keywords": [
+      "area",
+      "shell",
+      "slab",
+      "wall",
+      "panel"
+    ]
+  },
+  {
+    "category": "Properties - Areas",
+    "method": "cSapModel.PropArea.SetShell",
+    "summary": "Creates or updates a shell property with constant thickness and material.",
+    "parameters": [
+      "string name",
+      "eShellType type",
+      "string material",
+      "double thickness",
+      "double membraneMod",
+      "double bendingMod",
+      "double shearMod",
+      "double thermalCoef"
+    ],
+    "returns": "int status",
+    "usage": "Define concrete shear walls, diaphragms, or composite decks before assigning them to area objects.",
+    "keywords": [
+      "shell",
+      "property",
+      "thickness",
+      "deck",
+      "wall"
+    ]
+  },
+  {
+    "category": "Geometry - Points",
+    "method": "cSapModel.PointObj.GetClosestPoint",
+    "summary": "Returns the name of the closest existing joint to the provided coordinates.",
+    "parameters": [
+      "double X",
+      "double Y",
+      "double Z",
+      "string name"
+    ],
+    "returns": "int status",
+    "usage": "Use to reuse existing joints when generating auxiliary geometry for walls or braces.",
+    "keywords": [
+      "joint",
+      "search",
+      "reuse",
+      "closest point"
+    ]
+  },
+  {
+    "category": "Design",
+    "method": "cSapModel.DesignSteel.SetCode",
+    "summary": "Selects the active steel design code for automated checks.",
+    "parameters": [
+      "string codeName"
+    ],
+    "returns": "int status",
+    "usage": "Run before invoking steel design so demand/capacity ratios align with the desired specification.",
+    "keywords": [
+      "design",
+      "steel",
+      "code",
+      "AISC",
+      "Eurocode"
+    ]
+  },
+  {
+    "category": "Design",
+    "method": "cSapModel.DesignConcrete.SetCode",
+    "summary": "Specifies the reinforced concrete design code used for column, beam, and wall checks.",
+    "parameters": [
+      "string codeName"
+    ],
+    "returns": "int status",
+    "usage": "Apply when switching between ACI, Eurocode, BS, or other concrete standards.",
+    "keywords": [
+      "design",
+      "concrete",
+      "code",
+      "ACI"
+    ]
+  },
+  {
+    "category": "Design",
+    "method": "cSapModel.DesignCompositeBeam.SetCode",
+    "summary": "Sets the governing specification for composite beam design checks.",
+    "parameters": [
+      "string codeName"
+    ],
+    "returns": "int status",
+    "usage": "Required before running design on composite deck beams so the correct interaction rules are used.",
+    "keywords": [
+      "design",
+      "composite",
+      "beam",
+      "code"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.ModalEigen.SetCase",
+    "summary": "Creates or updates a modal eigenvector analysis case.",
+    "parameters": [
+      "string name"
+    ],
+    "returns": "int status",
+    "usage": "Call once per modal case prior to configuring the number of modes or mass source.",
+    "keywords": [
+      "analysis",
+      "modal",
+      "eigen",
+      "dynamic"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.ModalEigen.SetNumberModes",
+    "summary": "Controls how many vibration modes the modal case will extract.",
+    "parameters": [
+      "string name",
+      "int modes"
+    ],
+    "returns": "int status",
+    "usage": "Use to ensure enough participating modes are captured for response spectrum or time history analysis.",
+    "keywords": [
+      "modes",
+      "modal",
+      "dynamic"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.ResponseSpectrum.SetCase",
+    "summary": "Initializes a response spectrum analysis case.",
+    "parameters": [
+      "string name"
+    ],
+    "returns": "int status",
+    "usage": "Run prior to assigning spectrum functions or modal combinations.",
+    "keywords": [
+      "response spectrum",
+      "dynamic",
+      "analysis"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.ResponseSpectrum.SetModalCase",
+    "summary": "Associates a response spectrum case with an existing modal analysis case.",
+    "parameters": [
+      "string name",
+      "string modalCase"
+    ],
+    "returns": "int status",
+    "usage": "Ensure modal shapes are available for spectrum scaling.",
+    "keywords": [
+      "response spectrum",
+      "modal",
+      "dynamic"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.ResponseSpectrum.SetFunction",
+    "summary": "Assigns a response spectrum function, direction, and scale factor to the analysis case.",
+    "parameters": [
+      "string name",
+      "string function",
+      "double scaleFactor",
+      "int direction",
+      "double eccentricity"
+    ],
+    "returns": "int status",
+    "usage": "Apply for each excitation direction you want the spectrum to act.",
+    "keywords": [
+      "response spectrum",
+      "function",
+      "direction",
+      "dynamic"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.TimeHistoryDirect.SetCase",
+    "summary": "Creates a direct-integration time history case.",
+    "parameters": [
+      "string name"
+    ],
+    "returns": "int status",
+    "usage": "Define before assigning ground motion functions or control parameters.",
+    "keywords": [
+      "time history",
+      "dynamic",
+      "case"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.TimeHistoryDirect.SetMotionFunction",
+    "summary": "Sets the ground motion function, direction, and scale factor for a time history case.",
+    "parameters": [
+      "string name",
+      "string function",
+      "int direction",
+      "double scaleFactor",
+      "double angle"
+    ],
+    "returns": "int status",
+    "usage": "Use for each excitation component required by the time history analysis.",
+    "keywords": [
+      "time history",
+      "motion",
+      "ground acceleration"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.StaticNonlinear.SetCase",
+    "summary": "Creates a nonlinear static (pushover) load case.",
+    "parameters": [
+      "string name"
+    ],
+    "returns": "int status",
+    "usage": "Invoke before configuring control displacement and load pattern assignments.",
+    "keywords": [
+      "pushover",
+      "nonlinear",
+      "static"
+    ]
+  },
+  {
+    "category": "Analysis Setup",
+    "method": "cSapModel.LoadCases.StaticNonlinear.SetLoadCase",
+    "summary": "Assigns a load pattern to drive the nonlinear static analysis.",
+    "parameters": [
+      "string name",
+      "string pattern"
+    ],
+    "returns": "int status",
+    "usage": "Use to select lateral load patterns for pushover analyses.",
+    "keywords": [
+      "pushover",
+      "pattern",
+      "nonlinear"
+    ]
+  },
+  {
+    "category": "Frame Assignments",
+    "method": "cSapModel.FrameObj.SetHingeAssign",
+    "summary": "Assigns plastic hinge definitions to a frame object end.",
+    "parameters": [
+      "string frame",
+      "int items",
+      "string[] hingeNames",
+      "eHingeType[] hingeTypes",
+      "eHingeLocation[] locations",
+      "double[] relativeDistances",
+      "bool[] autoGenerate",
+      "string[] existing"
+    ],
+    "returns": "int status",
+    "usage": "Call to enable plastic hinge behavior for nonlinear analyses.",
+    "keywords": [
+      "hinge",
+      "nonlinear",
+      "plastic",
+      "pushover"
+    ]
   }
 ]
