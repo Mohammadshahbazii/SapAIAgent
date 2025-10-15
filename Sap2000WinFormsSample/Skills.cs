@@ -121,7 +121,7 @@ namespace Sap2000WinFormsSample
   ""shellThickness"": 0.2,
   ""numWallSegments"": 24, ""numHeightSegments"": 8,
   ""foundationElevation"": 0.0,
-  ""loads"": { ""liquidHeight"": 6.0, ""unitWeight"": 9.81 },
+  ""loads"": { ""liquidHeight"": 6.0, ""unitWeight"": 9.81, ""unitWeightUnits"": ""kN/m3|kg/m3"", ""density"": 1000 },
   ""fixBase"": true
 }";
         public IEnumerable<string> DocumentationReferences => _docRefs;
@@ -136,6 +136,10 @@ namespace Sap2000WinFormsSample
             double shellThickness = GetD(args, "shellThickness", 0);
             double liquidHeight = GetD(args, "liquidHeight", 0);
             double unitWeight = GetD(args, "unitWeight", 0);
+            string unitWeightUnits = GetString(args, "unitWeightUnits", null);
+            double density = GetD(args, "density", 0);
+            string densityUnits = GetString(args, "densityUnits", null);
+            double internalPressure = GetD(args, "internalPressureKPa", 0);
             bool fixBase = GetBool(args, "fixBase", true);
             double vesselLength = GetD(args, "length", 0);
             double roofRise = GetD(args, "roofRise", 0);
@@ -170,11 +174,19 @@ namespace Sap2000WinFormsSample
                 {
                     liquidHeight = GetD(loadDict, "liquidHeight", liquidHeight);
                     unitWeight = GetD(loadDict, "unitWeight", unitWeight);
+                    unitWeightUnits = GetString(loadDict, "unitWeightUnits", unitWeightUnits);
+                    density = GetD(loadDict, "density", density);
+                    densityUnits = GetString(loadDict, "densityUnits", densityUnits);
+                    internalPressure = GetD(loadDict, "internalPressureKPa", internalPressure);
                 }
                 else if (loadsObj is JsonElement loadElement && loadElement.ValueKind == JsonValueKind.Object)
                 {
                     if (loadElement.TryGetProperty("liquidHeight", out var v)) liquidHeight = GetD(v, liquidHeight);
                     if (loadElement.TryGetProperty("unitWeight", out var u)) unitWeight = GetD(u, unitWeight);
+                    if (loadElement.TryGetProperty("unitWeightUnits", out var uu)) unitWeightUnits = GetString(uu, unitWeightUnits);
+                    if (loadElement.TryGetProperty("density", out var d)) density = GetD(d, density);
+                    if (loadElement.TryGetProperty("densityUnits", out var du)) densityUnits = GetString(du, densityUnits);
+                    if (loadElement.TryGetProperty("internalPressureKPa", out var ip)) internalPressure = GetD(ip, internalPressure);
                 }
             }
 
@@ -191,6 +203,20 @@ namespace Sap2000WinFormsSample
             }
 
             // Build via the helper you already have
+            Loads loads = null;
+            if (liquidHeight > 0 || unitWeight > 0 || density > 0 || internalPressure > 0)
+            {
+                loads = new Loads
+                {
+                    liquidHeight = liquidHeight,
+                    unitWeight = unitWeight,
+                    unitWeightUnits = unitWeightUnits,
+                    density = density,
+                    densityUnits = densityUnits,
+                    internalPressureKPa = internalPressure
+                };
+            }
+
             var spec = new TankSpec
             {
                 units = specUnits,
@@ -204,9 +230,7 @@ namespace Sap2000WinFormsSample
                     shellThickness = shellThickness,
                     roofRise = roofRise
                 },
-                loads = (liquidHeight > 0 && unitWeight > 0)
-                    ? new Loads { liquidHeight = liquidHeight, unitWeight = unitWeight }
-                    : null,
+                loads = loads,
                 foundationElevation = z0,
                 fixBase = fixBase,
                 type = args.TryGetValue("type", out var typeObj) ? Convert.ToString(typeObj) : null
@@ -242,6 +266,25 @@ namespace Sap2000WinFormsSample
                     break;
             }
             return defVal;
+        }
+
+        private static string GetString(JsonElement element, string defaultValue)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.String:
+                    var text = element.GetString();
+                    return string.IsNullOrWhiteSpace(text) ? defaultValue : text;
+                case JsonValueKind.Number:
+                    if (element.TryGetDouble(out var val))
+                        return val.ToString(CultureInfo.InvariantCulture);
+                    break;
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    return element.GetBoolean().ToString();
+            }
+
+            return defaultValue;
         }
 
         private static bool GetBool(Dictionary<string, object> d, string key, bool defaultValue)
