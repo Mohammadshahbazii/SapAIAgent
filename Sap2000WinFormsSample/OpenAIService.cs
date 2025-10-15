@@ -27,7 +27,7 @@ Return STRICT JSON (no markdown, no commentary) matching this C#-friendly schema
   ""units"": { ""length"": ""m|mm|ft|in"", ""force"": ""kN|N|kip|lb"" },
   ""geometry"": { ""diameter"": number, ""height"": number, ""shellThickness"": number, ""numWallSegments"": integer, ""numHeightSegments"": integer },
   ""materials"": { ""steelGrade"": ""string"", ""yieldStress"": number },
-  ""loads"": { ""liquidHeight"": number, ""unitWeight"": number, ""internalPressureKPa"": number },
+  ""loads"": { ""liquidHeight"": number, ""unitWeight"": number, ""unitWeightUnits"": ""kN/m3|kg/m3|lb/ft3|kip/ft3"", ""density"": number, ""densityUnits"": ""kg/m3|lb/ft3"", ""internalPressureKPa"": number },
   ""foundationElevation"": number
 }
 Rules:
@@ -38,7 +38,8 @@ Rules:
 - Required: geometry.numWallSegments >= 12 and <= 64
 - Required: geometry.numHeightSegments >= 2 and <= 40
 - If user gives only volume and height, compute diameter from V = π*(D/2)^2*H.
-- Prefer SI units (m, kN).";
+- Prefer SI units (m, kN).
+- If the user gives mass density (e.g., kg/m^3) rather than unit weight, populate loads.density and loads.densityUnits and compute a reasonable unitWeight in kN/m^3 when possible.";
 
             var assistantInstruction = @"Infer reasonable defaults if not specified. 
 Prefer SI units (m, kN) unless the user clearly requests otherwise.";

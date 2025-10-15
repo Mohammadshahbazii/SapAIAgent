@@ -11,6 +11,8 @@ namespace Sap2000WinFormsSample
 {
     public static class SapBuilder
     {
+        private const double Gravity = 9.80665;
+
         /// <summary>
         /// Creates a cylindrical frame “mesh” (rings + verticals) centered at (0,0,foundationZ).
         /// Returns total created members.
@@ -44,9 +46,10 @@ namespace Sap2000WinFormsSample
             double dTheta = 2.0 * Math.PI / nCirc;
             double panelWidth = 2.0 * Math.PI * R / nCirc;
 
-            bool applyHydro = spec.loads != null && spec.loads.liquidHeight > 0 && spec.loads.unitWeight > 0;
+            double resolvedUnitWeight = ResolveLiquidUnitWeight(spec.loads, spec.units, units);
+            bool applyHydro = spec.loads != null && spec.loads.liquidHeight > 0 && resolvedUnitWeight > 0;
             double liquidHeight = applyHydro ? spec.loads.liquidHeight : 0.0;
-            double unitWeight = applyHydro ? spec.loads.unitWeight : 0.0;
+            double unitWeight = applyHydro ? resolvedUnitWeight : 0.0;
 
             var jointLoads = applyHydro ? new Dictionary<string, (double Fx, double Fy)>(StringComparer.OrdinalIgnoreCase) : null;
 
@@ -186,6 +189,168 @@ namespace Sap2000WinFormsSample
             model.Analyze.SetRunCaseFlag("DEAD", true);
 
             return created;
+        }
+
+        private static double ResolveLiquidUnitWeight(Loads loads, Units specUnits, eUnits sapUnits)
+        {
+            if (loads == null)
+                return 0.0;
+
+            double unitWeight = Math.Max(0.0, loads.unitWeight);
+            string normalizedWeightUnits = NormalizeUnitToken(loads.unitWeightUnits);
+
+            if (unitWeight > 0)
+            {
+                double converted = ConvertUnitWeightToSI(unitWeight, normalizedWeightUnits);
+                if (!double.IsNaN(converted) && converted > 0)
+                    return ConvertUnitWeightFromSI(converted, sapUnits);
+
+                if (ShouldTreatAsDensity(unitWeight, normalizedWeightUnits, specUnits, sapUnits))
+                {
+                    double densityKgPerM3 = ConvertDensityToSI(unitWeight, normalizedWeightUnits);
+                    if (densityKgPerM3 > 0)
+                    {
+                        double knPerM3 = densityKgPerM3 * Gravity / 1000.0;
+                        return ConvertUnitWeightFromSI(knPerM3, sapUnits);
+                    }
+                }
+
+                return unitWeight;
+            }
+
+            double densityValue = Math.Max(0.0, loads.density);
+            if (densityValue <= 0)
+                return 0.0;
+
+            string normalizedDensityUnits = NormalizeUnitToken(loads.densityUnits);
+            double densityKg = ConvertDensityToSI(densityValue, normalizedDensityUnits);
+            if (densityKg <= 0)
+                return 0.0;
+
+            double resolvedKnPerM3 = densityKg * Gravity / 1000.0;
+            return ConvertUnitWeightFromSI(resolvedKnPerM3, sapUnits);
+        }
+
+        private static string NormalizeUnitToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            string token = value.Trim().ToLowerInvariant();
+            token = token.Replace("kilonewton", "kn");
+            token = token.Replace("newton", "n");
+            token = token.Replace("kilogram", "kg");
+            token = token.Replace("gram", "g");
+            token = token.Replace("pound", "lb");
+            token = token.Replace("lbs", "lb");
+            token = token.Replace("per", "/");
+            token = token.Replace("cubic", string.Empty);
+            token = token.Replace("^", string.Empty);
+            token = token.Replace("-", string.Empty);
+            token = token.Replace("_", string.Empty);
+            token = token.Replace(" ", string.Empty);
+            token = token.Replace("pcf", "lb/ft3");
+            token = token.Replace("metre", "m");
+            token = token.Replace("meter", "m");
+            return token;
+        }
+
+        private static double ConvertUnitWeightToSI(double value, string normalizedUnit)
+        {
+            if (value <= 0 || string.IsNullOrEmpty(normalizedUnit))
+                return double.NaN;
+
+            switch (normalizedUnit)
+            {
+                case "kn/m3":
+                case "knm3":
+                    return value;
+                case "n/m3":
+                case "nm3":
+                    return value / 1000.0;
+                case "kg/m3":
+                case "kgm3":
+                    return ConvertDensityToSI(value, "kg/m3") * Gravity / 1000.0;
+                case "lb/ft3":
+                case "lbft3":
+                    return ConvertDensityToSI(value, "lb/ft3") * Gravity / 1000.0;
+                case "kip/ft3":
+                case "kipft3":
+                    return value * 157.08746384624618;
+                case "kip/in3":
+                case "kipin3":
+                    return value * 271447.1375263134;
+            }
+
+            return double.NaN;
+        }
+
+        private static double ConvertUnitWeightFromSI(double value, eUnits sapUnits)
+        {
+            if (value <= 0)
+                return 0.0;
+
+            switch (sapUnits)
+            {
+                case eUnits.N_mm_C:
+                    return value * 1e-6;
+                case eUnits.kip_ft_F:
+                    return value * 0.006365880376103511;
+                case eUnits.kip_in_F:
+                    return value * 3.6839585509858286e-06;
+                default:
+                    return value;
+            }
+        }
+
+        private static double ConvertDensityToSI(double value, string normalizedUnit)
+        {
+            if (value <= 0)
+                return 0.0;
+
+            if (string.IsNullOrEmpty(normalizedUnit) || normalizedUnit == "kg/m3" || normalizedUnit == "kgm3")
+                return value;
+
+            if (normalizedUnit == "g/cm3" || normalizedUnit == "gcm3")
+                return value * 1000.0;
+
+            if (normalizedUnit == "lb/ft3" || normalizedUnit == "lbft3")
+                return value * 16.0184633739601;
+
+            if (normalizedUnit == "lb/in3" || normalizedUnit == "lbin3")
+                return value * 27679.904710191;
+
+            if (normalizedUnit == "slug/ft3" || normalizedUnit == "slugft3")
+                return value * 515.3788184;
+
+            if (normalizedUnit == "kn/m3" || normalizedUnit == "knm3")
+                return (value * 1000.0) / Gravity;
+
+            if (normalizedUnit == "n/m3" || normalizedUnit == "nm3")
+                return value / Gravity;
+
+            return value;
+        }
+
+        private static bool ShouldTreatAsDensity(double value, string normalizedUnit, Units specUnits, eUnits sapUnits)
+        {
+            if (!string.IsNullOrEmpty(normalizedUnit))
+                return false;
+
+            string forceUnit = specUnits?.force?.Trim().ToLowerInvariant();
+            string lengthUnit = specUnits?.length?.Trim().ToLowerInvariant();
+
+            bool metricForce = string.IsNullOrEmpty(forceUnit) || forceUnit.Contains("kn") || forceUnit == "n";
+            bool metricLength = string.IsNullOrEmpty(lengthUnit) || lengthUnit.StartsWith("m");
+            bool usingMetric = metricForce && metricLength;
+
+            if (sapUnits == eUnits.N_mm_C || sapUnits == eUnits.kN_m_C)
+                usingMetric = true;
+
+            if (!usingMetric)
+                return false;
+
+            return value > 200.0 && value < 5000.0;
         }
 
         public class BuildingBuildResult

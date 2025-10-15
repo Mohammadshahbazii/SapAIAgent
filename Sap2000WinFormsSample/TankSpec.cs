@@ -47,6 +47,9 @@ namespace Sap2000WinFormsSample
     {
         public double liquidHeight { get; set; }
         public double unitWeight { get; set; } // kN/m^3 if SI
+        public string unitWeightUnits { get; set; }
+        public double density { get; set; }
+        public string densityUnits { get; set; }
         public double internalPressureKPa { get; set; }
     }
 }
