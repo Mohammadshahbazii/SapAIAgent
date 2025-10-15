@@ -241,66 +241,93 @@ namespace Sap2000WinFormsSample
             return $"Pressure vessel ({resolvedType}) generated. joints={result.jointCount}, frameMembers={result.frameMembers}.";
         }
 
-        private static double GetD(Dictionary<string, object> d, string k, double defVal)
+
+
+        static double GetD(Dictionary<string, object> dict, string key, double defVal = 0)
         {
-            if (!d.TryGetValue(k, out var v) || v == null) return defVal;
-            if (v is JsonElement je) return GetD(je, defVal);
+            if (dict == null || !dict.TryGetValue(key, out var v) || v == null) return defVal;
             if (v is double dd) return dd;
             if (v is float ff) return ff;
             if (v is int ii) return ii;
-            if (double.TryParse(Convert.ToString(v, CultureInfo.InvariantCulture), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+            if (double.TryParse(Convert.ToString(v, CultureInfo.InvariantCulture),
+                                NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
                 return parsed;
             return defVal;
         }
 
-        private static double GetD(JsonElement element, double defVal)
+        static double GetD(JsonElement el, double defVal = 0)
         {
-            switch (element.ValueKind)
+            try
             {
-                case JsonValueKind.Number:
-                    if (element.TryGetDouble(out var val)) return val;
-                    break;
-                case JsonValueKind.String:
-                    var str = element.GetString();
-                    if (double.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)) return parsed;
-                    break;
+                if (el.ValueKind == JsonValueKind.Number)
+                {
+                    return el.GetDouble();
+                }
+                else if (el.ValueKind == JsonValueKind.String)
+                {
+                    double parsed;
+                    if (double.TryParse(el.GetString(),
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out parsed))
+                        return parsed;
+                }
             }
+            catch { }
             return defVal;
         }
 
-        private static string GetString(JsonElement element, string defaultValue)
+        static string GetString(Dictionary<string, object> dict, string key, string defVal = null)
         {
-            switch (element.ValueKind)
-            {
-                case JsonValueKind.String:
-                    var text = element.GetString();
-                    return string.IsNullOrWhiteSpace(text) ? defaultValue : text;
-                case JsonValueKind.Number:
-                    if (element.TryGetDouble(out var val))
-                        return val.ToString(CultureInfo.InvariantCulture);
-                    break;
-                case JsonValueKind.True:
-                case JsonValueKind.False:
-                    return element.GetBoolean().ToString();
-            }
-
-            return defaultValue;
+            if (dict == null || !dict.TryGetValue(key, out var v) || v == null) return defVal;
+            var s = Convert.ToString(v, CultureInfo.InvariantCulture);
+            return string.IsNullOrWhiteSpace(s) ? defVal : s;
         }
 
-        private static bool GetBool(Dictionary<string, object> d, string key, bool defaultValue)
+        static string GetString(JsonElement el, string defVal = null)
         {
-            if (!d.TryGetValue(key, out var v) || v == null) return defaultValue;
-            if (v is JsonElement je) return GetBool(je, defaultValue);
+            try
+            {
+                if (el.ValueKind == JsonValueKind.String)
+                {
+                    var s = el.GetString();
+                    return string.IsNullOrWhiteSpace(s) ? defVal : s;
+                }
+                return defVal;
+            }
+            catch { return defVal; }
+        }
+
+        static bool GetBool(Dictionary<string, object> dict, string key, bool defVal = false)
+        {
+            if (dict == null || !dict.TryGetValue(key, out var v) || v == null) return defVal;
             if (v is bool b) return b;
-            if (v is int i) return i != 0;
-            if (v is double dbl) return Math.Abs(dbl) > double.Epsilon;
-            if (v is string s)
-            {
-                if (bool.TryParse(s, out var parsedBool)) return parsedBool;
-                if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt)) return parsedInt != 0;
-            }
-            return defaultValue;
+            var s = Convert.ToString(v, CultureInfo.InvariantCulture)?.Trim().ToLowerInvariant();
+            if (s == "true" || s == "1" || s == "yes" || s == "on") return true;
+            if (s == "false" || s == "0" || s == "no" || s == "off") return false;
+            return defVal;
         }
+
+        // Optional: resolve "units" arg and also populate your specUnits object
+        static eUnits? TryResolveUnits(object unitsObj, ref Units specUnits)
+        {
+            if (unitsObj == null) return null;
+            var s = Convert.ToString(unitsObj)?.Trim();
+            if (string.IsNullOrEmpty(s)) return null;
+
+            // normalize tokens
+            var t = s.Replace("-", "_").Replace(" ", "_").ToLowerInvariant();
+
+            // map a few common forms
+            if (t.Contains("n_mm")) { specUnits.length = "mm"; specUnits.force = "N"; return eUnits.N_mm_C; }
+            if (t.Contains("kip_in")) { specUnits.length = "in"; specUnits.force = "kip"; return eUnits.kip_in_F; }
+            if (t.Contains("kip_ft")) { specUnits.length = "ft"; specUnits.force = "kip"; return eUnits.kip_ft_F; }
+
+            // default SI
+            specUnits.length = "m"; specUnits.force = "kN";
+            return eUnits.kN_m_C;
+        }
+
 
         private static bool GetBool(JsonElement element, bool defaultValue)
         {
@@ -322,43 +349,6 @@ namespace Sap2000WinFormsSample
             return defaultValue;
         }
 
-        private static eUnits? TryResolveUnits(object unitsObj, ref Units specUnits)
-        {
-            if (unitsObj == null) return null;
-
-            if (unitsObj is eUnits direct)
-            {
-                UpdateUnitsForSpec(direct, ref specUnits);
-                return direct;
-            }
-
-            if (unitsObj is string s)
-                return ResolveUnitsFromCode(s, ref specUnits);
-
-            if (unitsObj is Dictionary<string, object> dict)
-            {
-                string length = AsString(dict.TryGetValue("length", out var len) ? len : null);
-                string force = AsString(dict.TryGetValue("force", out var frc) ? frc : null);
-                var fromComponents = ResolveUnitsFromComponents(length, force, ref specUnits);
-                if (fromComponents.HasValue) return fromComponents;
-            }
-
-            if (unitsObj is JsonElement element)
-            {
-                if (element.ValueKind == JsonValueKind.String)
-                    return ResolveUnitsFromCode(element.GetString(), ref specUnits);
-
-                if (element.ValueKind == JsonValueKind.Object)
-                {
-                    string length = element.TryGetProperty("length", out var lenEl) ? lenEl.GetString() : null;
-                    string force = element.TryGetProperty("force", out var forceEl) ? forceEl.GetString() : null;
-                    var fromComponents = ResolveUnitsFromComponents(length, force, ref specUnits);
-                    if (fromComponents.HasValue) return fromComponents;
-                }
-            }
-
-            return ResolveUnitsFromCode(Convert.ToString(unitsObj, CultureInfo.InvariantCulture), ref specUnits);
-        }
 
         private static eUnits? ResolveUnitsFromCode(string code, ref Units specUnits)
         {

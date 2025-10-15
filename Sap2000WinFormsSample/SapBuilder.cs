@@ -887,13 +887,13 @@ namespace Sap2000WinFormsSample
 
             if (string.IsNullOrWhiteSpace(type) || type.Equals("Vertical", StringComparison.OrdinalIgnoreCase) || type.Equals("VerticalCylindrical", StringComparison.OrdinalIgnoreCase) || type.Equals("Cylindrical", StringComparison.OrdinalIgnoreCase))
             {
-                var result = new PressureVesselBuildResult();
+                var results = new PressureVesselBuildResult();
                 int frames = BuildCylindricalReservoirFrames(model, spec);
                 int nCirc = Math.Max(12, spec.geometry?.numWallSegments ?? 24);
                 int nZ = Math.Max(2, spec.geometry?.numHeightSegments ?? 8);
-                result.frameMembers = frames;
-                result.jointCount = nCirc * nZ;
-                return result;
+                results.frameMembers = frames;
+                results.jointCount = nCirc * nZ;
+                return results;
             }
 
             var units = ResolveUnits(spec.units);
